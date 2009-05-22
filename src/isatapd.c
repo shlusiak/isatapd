@@ -84,11 +84,15 @@ void parse_options(int argc, char** argv)
 }
 
 
+void add_prl()
+{
+	printf("Adding routers: \n");
+}
 
 
 int main(int argc, char **argv)
 {
-	unsigned long saddr;
+	uint32_t saddr;
 	parse_options(argc, argv);
 
 	if (tunnel_name == NULL)
@@ -115,6 +119,7 @@ int main(int argc, char **argv)
 	tunnel_up(tunnel_name);
 
 
+	add_prl();
 	sleep(5);
 
 

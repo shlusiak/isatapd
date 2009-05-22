@@ -1,0 +1,15 @@
+*.c~
+*.h~
+*.o
+Makefile
+Makefile.in
+autom4te.cache/
+aclocal.m4
+config.h
+config.h.in
+config.log
+configure
+.deps/
+isatapd
+stamp-h1
+config.status

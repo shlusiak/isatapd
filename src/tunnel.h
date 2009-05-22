@@ -1,22 +1,16 @@
 #ifndef _TUNNEL_H_INCLUDED_
 #define _TUNNEL_H_INCLUDED_
 
-int tunnel_add(const char *interface,
-		const char *name,
-		unsigned long saddr);
+int tunnel_add(const char *dev,
+		const char *link,
+		uint32_t saddr);
 
-int tunnel_up(const char *name);
+int tunnel_up(const char *dev);
 
-int tunnel_down(const char *name);
+int tunnel_down(const char *dev);
 
-int tunnel_del(const char *name);
+int tunnel_del(const char *dev);
 
-unsigned long get_if_addr(const char *dev);
-
-
-
-
-
-
+uint32_t get_if_addr(const char *dev);
 
 #endif

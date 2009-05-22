@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -26,7 +25,7 @@ int get_if_index(const char *dev)
 	return ifr.ifr_ifindex;
 }
 
-unsigned long get_if_addr(const char *dev)
+uint32_t get_if_addr(const char *dev)
 {
 	struct ifreq ifr;
 	int fd;
@@ -45,9 +44,9 @@ unsigned long get_if_addr(const char *dev)
 	return ((struct sockaddr_in *) (&ifr.ifr_addr))->sin_addr.s_addr;
 }
 
-int tunnel_add(const char *interface,
-		const char *name,
-		unsigned long saddr)
+int tunnel_add(const char *dev,
+		const char *link,
+		uint32_t saddr)
 {
 	struct ip_tunnel_parm p;
 	struct ifreq ifr;
@@ -61,8 +60,8 @@ int tunnel_add(const char *interface,
 	p.iph.protocol = IPPROTO_IPV6;
 	p.iph.saddr = saddr;
 	p.i_flags |= SIT_ISATAP;
-	strncpy(p.name, name, IFNAMSIZ);
-	p.link = get_if_index(interface);
+	strncpy(p.name, dev, IFNAMSIZ);
+	p.link = get_if_index(link);
 	if (p.link <= 0) {
 		perror("get_ifindex");
 		return -1;
@@ -83,13 +82,13 @@ int tunnel_add(const char *interface,
 	return err;
 }
 
-int tunnel_up(const char *name)
+int tunnel_up(const char *dev)
 {
 	struct ifreq ifr;
 	int fd;
 	int err;
 
-	strncpy(ifr.ifr_name, name, IFNAMSIZ);
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (fd < 0)
 		return -1;
@@ -108,13 +107,13 @@ int tunnel_up(const char *name)
 	return err;
 }
 
-int tunnel_down(const char *name)
+int tunnel_down(const char *dev)
 {
 	struct ifreq ifr;
 	int fd;
 	int err;
 
-	strncpy(ifr.ifr_name, name, IFNAMSIZ);
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (fd < 0)
 		return -1;
@@ -133,7 +132,7 @@ int tunnel_down(const char *name)
 	return err;
 }
 
-int tunnel_del(const char *name)
+int tunnel_del(const char *dev)
 {
 	struct ip_tunnel_parm p;
 	struct ifreq ifr;
@@ -146,9 +145,9 @@ int tunnel_del(const char *name)
 	p.iph.ihl = 5;
 	p.iph.protocol = IPPROTO_IPV6;
 	p.i_flags |= SIT_ISATAP;
-	strncpy(p.name, name, IFNAMSIZ);
+	strncpy(p.name, dev, IFNAMSIZ);
 
-	strncpy(ifr.ifr_name, name, IFNAMSIZ);
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
 	ifr.ifr_ifru.ifru_data = (void*)&p;
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (fd < 0) {
@@ -161,4 +160,9 @@ int tunnel_del(const char *name)
 	close(fd);
 
 	return err;
+}
+
+int tunnel_add_prl(const char *dev, uint32_t addr)
+{
+	return -1;
 }
