@@ -54,7 +54,6 @@ int tunnel_add(const char *dev,
 	strncpy(p.name, dev, IFNAMSIZ);
 	p.link = if_nametoindex(link);
 	if (p.link <= 0) {
-		perror("if_nametoindex");
 		return -1;
 	}
 
@@ -62,11 +61,10 @@ int tunnel_add(const char *dev,
 	ifr.ifr_ifru.ifru_data = (void*)&p;
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (fd < 0) {
-		perror("socket");
 		return -1;
 	}
 	if (ioctl(fd, SIOCADDTUNNEL, &ifr) < 0) {
-		perror("SIOCADDTUNNEL");
+		close(fd);
 		return -1;
 	}
 	close(fd);
@@ -85,14 +83,12 @@ int tunnel_up(const char *dev)
 		return -1;
 
 	if (ioctl(fd, SIOCGIFFLAGS, &ifr)) {
-		perror("SIOCGIFFLAGS");
 		close(fd);
 		return -1;
 	}
 	ifr.ifr_flags |= IFF_UP;
 
 	if (ioctl(fd, SIOCSIFFLAGS, &ifr)) {
-		perror("SIOCSIFFLAGS");
 		close(fd);
 		return -1;
 	}
@@ -111,14 +107,12 @@ int tunnel_down(const char *dev)
 		return -1;
 
 	if (ioctl(fd, SIOCGIFFLAGS, &ifr)) {
-		perror("SIOCGIFFLAGS");
 		close(fd);
 		return -1;
 	}
 	ifr.ifr_flags &= ~IFF_UP;
 
 	if (ioctl(fd, SIOCSIFFLAGS, &ifr)) {
-		perror("SIOCSIFFLAGS");
 		close(fd);
 		return -1;
 	}
@@ -144,12 +138,10 @@ int tunnel_del(const char *dev)
 	ifr.ifr_ifru.ifru_data = (void*)&p;
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (fd < 0) {
-		perror("socket");
 		return -1;
 	}
 	
 	if (ioctl(fd, SIOCDELTUNNEL, &ifr)) {
-		perror("ioctl");
 		close(fd);
 		return -1;
 	}
@@ -172,8 +164,10 @@ int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr)
 	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
 	ifr.ifr_ifru.ifru_data = (void*)&p;
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return -1;
+	
 	if (ioctl(fd, SIOCADDPRL, &ifr)) {
-		perror("ioctl");
 		close(fd);
 		return -1;
 	}
