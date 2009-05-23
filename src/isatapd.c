@@ -1,3 +1,16 @@
+/*
+ * isatapd.c    main
+ *
+ *              This program is free software; you can redistribute it and/or
+ *              modify it under the terms of the GNU General Public License
+ *              as published by the Free Software Foundation; either version
+ *              2 of the License, or (at your option) any later version.
+ *
+ * Authors:     Sascha Hlusiak, <mail@saschahlusiak.de>
+ *
+ */
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -25,7 +38,7 @@ static char* tunnel_name = NULL;
 static char* interface_name = NULL;
 static char* router_name[10] = { "isatap", NULL };
 static int   router_num = 0;
-static int   probe_interval = 10;
+static int   probe_interval = 600;
 static int   verbose = 0;
 static int   daemonize = 0;
 static int volatile go_down = 0;
@@ -43,7 +56,19 @@ void show_help()
 	fprintf(stderr, "       -d --daemon     fork into background\n");
 	fprintf(stderr, "       -v --verbose    increase verbosity\n");
 	fprintf(stderr, "       -q --quiet      decrease verbosity\n");
-	fprintf(stderr, "       interface       the link device\n");
+	fprintf(stderr, "          --version    display version\n");
+	fprintf(stderr, "       interface       tunnel link device\n");
+
+	exit(0);
+}
+
+void show_version()
+{
+	fprintf(stderr, PACKAGE "-" VERSION "\n\n");
+	fprintf(stderr, "Copyright (c) 2009 Sascha Hlusiak\n");
+	fprintf(stderr, "\nThis is free software; You may redistribute copies of this software\n");
+	fprintf(stderr, "under the terms of the GNU General Public License.\n");
+	fprintf(stderr, "For more information about these matters, see the file named COPYING.\n");
 
 	exit(0);
 }
@@ -60,6 +85,7 @@ void parse_options(int argc, char** argv)
 		{"verbose", 0, NULL, 'v'},
 		{"quiet", 0, NULL, 'q'},
 		{"daemon", 0, NULL, 'd'},
+		{"version", 0, NULL, 'V'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -98,6 +124,8 @@ void parse_options(int argc, char** argv)
 		case 'd': daemonize = 1;
 			break;
 
+		case 'V': show_version();
+			break;
 		default:
 			fprintf(stderr, "%s: not implemented option -- %s\n", argv[0], argv[optind-1]);
 		case '?':
