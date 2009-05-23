@@ -5,25 +5,15 @@
 
 #include <linux/if_tunnel.h>
 #include <sys/ioctl.h>
+#include <net/if.h>
+
+#ifdef HAVE_CONFIG_H
+	#include <config.h>
+#endif
+
 
 #include "tunnel.h"
 
-int get_if_index(const char *dev)
-{
-	struct ifreq ifr;
-	int fd;
-	int err;
-
-	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
-	fd = socket(AF_INET, SOCK_DGRAM, 0);
-	err = ioctl(fd, SIOCGIFINDEX, &ifr);
-	if (err) {
-		perror("ioctl");
-		return 0;
-	}
-	close(fd);
-	return ifr.ifr_ifindex;
-}
 
 uint32_t get_if_addr(const char *dev)
 {
@@ -59,9 +49,10 @@ int tunnel_add(const char *dev,
 	p.iph.ihl = 5;
 	p.iph.protocol = IPPROTO_IPV6;
 	p.iph.saddr = saddr;
+	p.iph.frag_off = htons(IP_DF);
 	p.i_flags |= SIT_ISATAP;
 	strncpy(p.name, dev, IFNAMSIZ);
-	p.link = get_if_index(link);
+	p.link = if_nametoindex(link);
 	if (p.link <= 0) {
 		perror("get_ifindex");
 		return -1;
@@ -162,7 +153,42 @@ int tunnel_del(const char *dev)
 	return err;
 }
 
-int tunnel_add_prl(const char *dev, uint32_t addr)
+int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr)
 {
-	return -1;
+	struct ip_tunnel_prl p;
+	struct ifreq ifr;
+	int err;
+	int fd;
+
+	memset(&p, 0, sizeof(p));
+	p.addr = addr;
+	if (default_rtr)
+		p.flags |= PRL_DEFAULT;
+
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+	ifr.ifr_ifru.ifru_data = (void*)&p;
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	err = ioctl(fd, SIOCADDPRL, &ifr);
+	if (err)
+		perror("ioctl");
+	close(fd);
+	return err;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

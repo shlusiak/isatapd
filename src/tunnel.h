@@ -11,6 +11,8 @@ int tunnel_down(const char *dev);
 
 int tunnel_del(const char *dev);
 
+int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr);
+
 uint32_t get_if_addr(const char *dev);
 
 #endif
