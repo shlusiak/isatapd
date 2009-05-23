@@ -27,8 +27,8 @@ static char* router_name[10] = { "isatap", NULL };
 static int   router_num = 0;
 static int   probe_interval = 10;
 static int   verbose = 0;
+static int   daemonize = 0;
 static int volatile go_down = 0;
-
 
 void show_help()
 {
@@ -40,6 +40,7 @@ void show_help()
 	fprintf(stderr, "                       default: '%s'.\n", router_name[0]);
 	fprintf(stderr, "       -i --interval   interval to check PRL and perform router solicitation\n");
 	fprintf(stderr, "                       default: %d seconds\n", probe_interval);
+	fprintf(stderr, "       -d --daemon     fork into background\n");
 	fprintf(stderr, "       -v --verbose    increase verbosity\n");
 	fprintf(stderr, "       -q --quiet      decrease verbosity\n");
 	fprintf(stderr, "       interface       the link device\n");
@@ -50,7 +51,7 @@ void show_help()
 void parse_options(int argc, char** argv)
 {
 	int c;
-	const char* short_options = "hn:i:r:vq";
+	const char* short_options = "hn:i:r:vqd";
 	struct option long_options[] = {
 		{"help", 0, NULL, 'h'},
 		{"name", 1, NULL, 'n'},
@@ -58,6 +59,7 @@ void parse_options(int argc, char** argv)
 		{"interval", 1, NULL, 'i'},
 		{"verbose", 0, NULL, 'v'},
 		{"quiet", 0, NULL, 'q'},
+		{"daemon", 0, NULL, 'd'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -92,6 +94,8 @@ void parse_options(int argc, char** argv)
 		case 'v': verbose++;
 			break;
 		case 'q': verbose--;
+			break;
+		case 'd': daemonize = 1;
 			break;
 
 		default:
@@ -177,12 +181,16 @@ int add_prl_entry(const char* host)
 	return 0;
 }
 
-void handler(int sig)
+void sigint_handler(int sig)
 {
-	signal(SIGINT, SIG_DFL);
+	signal(sig, SIG_DFL);
 	if (verbose >= 0)
-		fprintf(stderr, "SIGINT received, going down.\n");
+		fprintf(stderr, "signal %d received, going down.\n", sig);
 	go_down = 1;
+}
+
+void sighup_handler(int sig)
+{
 }
 
 void add_prl(int sig)
@@ -192,7 +200,6 @@ void add_prl(int sig)
 		 if (router_name[i])
 	{
 		if (add_prl_entry(router_name[i]) < 0) {
-			go_down = 1;
 			return;
 		}
 	}
@@ -200,19 +207,10 @@ void add_prl(int sig)
 	alarm(probe_interval);
 }
 
-int main(int argc, char **argv)
+
+static uint32_t start_isatap()
 {
 	uint32_t saddr;
-
-	parse_options(argc, argv);
-
-	signal(SIGINT, handler);
-
-	if (tunnel_name == NULL) {
-		tunnel_name = (char *)malloc(strlen(interface_name)+3+1);
-		strcpy(tunnel_name, "is_");
-		strcat(tunnel_name, interface_name);
-	}
 
 	saddr = get_if_addr(interface_name);
 	if (saddr == 0) {
@@ -220,12 +218,10 @@ int main(int argc, char **argv)
 			perror("get_if_addr");
 		exit(1);
 	}
-
 	
 	if (tunnel_add(tunnel_name, interface_name, saddr) < 0) {
 		if (verbose >= -1)
 			perror("tunnel_add");
-/*		fprintf(stderr, "%s: error creating tunnel interface %s\n", argv[0], tunnel_name); */
 		exit(1);
 	}
 
@@ -241,16 +237,11 @@ int main(int argc, char **argv)
 	if (verbose >= 2)
 		printf("%s up\n", tunnel_name);
 
+	return saddr;
+}
 
-/*	if (verbose >= 1) fprintf(stderr, "Ctrl+C to abort...\n"); */
-
-	signal(SIGALRM, add_prl);
-	
-	alarm(1);
-
-	while (!go_down)
-		pause();
-
+static void stop_isatap()
+{
 	if (tunnel_down(tunnel_name) < 0) {
 		if (verbose >= -1)
 			perror("tunnel_down");
@@ -262,6 +253,71 @@ int main(int argc, char **argv)
 			perror("tunnel_del");
 	} else if (verbose >= 1)
 		printf("%s deleted\n", tunnel_name);
+}
+
+
+
+int main(int argc, char **argv)
+{
+	uint32_t saddr;
+
+	parse_options(argc, argv);
+
+	if (tunnel_name == NULL) {
+		tunnel_name = (char *)malloc(strlen(interface_name)+3+1);
+		strcpy(tunnel_name, "is_");
+		strcat(tunnel_name, interface_name);
+	}
+
+	if (daemonize) {
+		pid_t pid;
+		pid = fork();
+		if (pid < 0) {
+			perror("fork");
+			exit(1);
+		}
+		if (pid > 0) { /* Server */
+			if (verbose >= 0)
+				fprintf(stderr, "%s: running isatap daemon on interface %s\n", argv[0], interface_name);
+			exit(0);
+		}
+		setsid();
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+	}
+
+	signal(SIGINT, sigint_handler);
+	signal(SIGTERM, sigint_handler);
+	signal(SIGALRM, add_prl);
+	signal(SIGHUP, sighup_handler);
+
+	while (!go_down)
+	{
+		while ((get_if_addr(interface_name) == 0) && (!go_down)) {
+			if (verbose >= 0)
+				fprintf(stderr, "%s: link %s not ready...\n", argv[0], interface_name);
+			sleep(5);
+		}
+		if (go_down)
+			break;
+
+		saddr = start_isatap();
+		add_prl(SIGALRM);
+
+		while (!go_down) {
+			pause();
+			if (get_if_addr(interface_name) != saddr) {
+				alarm(0);
+				if (verbose >= 0)
+					fprintf(stderr, "%s: address of %s changed\n", argv[0], interface_name);
+				saddr = 0;
+				break;
+			} else if (!go_down)
+				add_prl(SIGALRM);
+		}
+		stop_isatap();
+	}
 
 	return 0;
 }
