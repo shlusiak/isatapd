@@ -32,6 +32,9 @@ uint32_t get_if_addr(const char *dev)
 	struct ifreq ifr;
 	int fd;
 
+	if (dev == NULL)
+		return 0;
+
 	memset(&ifr, 0, sizeof(ifr));
 	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
 
@@ -67,9 +70,10 @@ int tunnel_add(const char *dev,
 
 	p.i_flags |= SIT_ISATAP;
 	strncpy(p.name, dev, IFNAMSIZ);
-	p.link = if_nametoindex(link);
-	if (p.link <= 0) {
-		return -1;
+	if (link) {
+		p.link = if_nametoindex(link);
+		if (p.link <= 0)
+			return -1;
 	}
 
 	strncpy(ifr.ifr_name, "sit0", IFNAMSIZ);
@@ -210,3 +214,6 @@ int tunnel_set_mtu(const char *dev, int mtu)
 
 	return 0;
 }
+
+
+

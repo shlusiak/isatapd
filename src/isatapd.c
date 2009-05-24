@@ -34,26 +34,30 @@
 #include "rdisc.h"
 
 
+#define MAX_ROUTERS 10
+#define DEFAULT_ROUTER_NAME "isatap"
+#define WAIT_FOR_LINK (10)  /* seconds between polling, if link is down */
+
+
 static char* tunnel_name = NULL;
 static char* interface_name = NULL;
-static char* router_name[10] = { "isatap", NULL };
-static int   router_num = 0;
+static char* router_name[MAX_ROUTERS] = { NULL };
 static int   probe_interval = 600;
 static int   verbose = 0;
 static int   daemonize = 0;
 static int   ttl = 64;
 static int   mtu = 0;
-static int volatile go_down = 0;
+static int   volatile go_down = 0;
 
 
-#define WAIT_FOR_LINK (5)  /* seconds between polling, if link is down */
 
 
 static void show_help()
 {
-	fprintf(stderr, "Usage: isatapd [OPTIONS] interface...\n");
-	fprintf(stderr, "       interface       tunnel link device\n");
+	fprintf(stderr, "Usage: isatapd [OPTIONS] [ROUTER]...\n");
 	fprintf(stderr, "       -n --name       name of the tunnel\n");
+	fprintf(stderr, "                       default: is0\n");
+	fprintf(stderr, "       -l --link       tunnel link device\n");
 	fprintf(stderr, "                       default: auto\n");
 	fprintf(stderr, "          --mtu        set tunnel MTU\n");
 	fprintf(stderr, "                       default: auto\n");
@@ -61,8 +65,8 @@ static void show_help()
 	fprintf(stderr, "                       default: %d\n", ttl);
 	fprintf(stderr, "\n");
 
-	fprintf(stderr, "       -r --router     add a potential router (up to %d).\n", (int)sizeof(router_name)/(int)sizeof(router_name[0]));
-	fprintf(stderr, "                       default: '%s'.\n", router_name[0]);
+	fprintf(stderr, "       -r --router     set potential router.\n");
+	fprintf(stderr, "                       default: '%s'.\n", DEFAULT_ROUTER_NAME);
 	fprintf(stderr, "       -i --interval   interval to check PRL and perform router solicitation\n");
 	fprintf(stderr, "                       default: %d seconds\n", probe_interval);
 	fprintf(stderr, "\n");
@@ -92,13 +96,26 @@ static void show_version()
 	exit(0);
 }
 
+static int add_name_to_prl(const char* name)
+{
+	int i;
+	for (i=0; i < MAX_ROUTERS; i++)
+		if (router_name[i] == NULL)
+	{
+		router_name[i] = strdup(name);
+		return 0;
+	}
+	return -1;
+}
+
 static void parse_options(int argc, char** argv)
 {
 	int c;
-	const char* short_options = "hn:i:r:vqd1";
+	const char* short_options = "hn:i:r:vqd1l:";
 	struct option long_options[] = {
 		{"help", 0, NULL, 'h'},
 		{"name", 1, NULL, 'n'},
+		{"link", 1, NULL, 'l'},
 		{"router", 1, NULL, 'r'},
 		{"interval", 1, NULL, 'i'},
 		{"verbose", 0, NULL, 'v'},
@@ -120,14 +137,11 @@ static void parse_options(int argc, char** argv)
 		case 'n': if (optarg)
 				tunnel_name = strdup(optarg);
 			break;
-		case 'r': if (optarg) {
-				if (router_num < sizeof(router_name)/sizeof(router_name[0]))
-					router_name[router_num++] = strdup(optarg);
-				else {
-					fprintf(stderr, PACKAGE ": too many default routers\n");
-					show_help();
-				}
-			}
+		case 'l': if (optarg)
+				interface_name = strdup(optarg);
+			break;
+		case 'r': if (optarg)
+				add_name_to_prl(optarg);
 			break;
 		case 'i': if (optarg) {
 				probe_interval = atoi(optarg);
@@ -170,12 +184,10 @@ static void parse_options(int argc, char** argv)
 		}
 	}
 
-	if (optind == argc-1) {
-		interface_name = strdup(argv[optind]);
-	} else {
-		fprintf(stderr, PACKAGE ": missing argument -- interface\n");
-		show_help();
-	}
+	for (; optind < argc; optind++)
+		add_name_to_prl(argv[optind]);
+	if (router_name[0] == NULL)
+		add_name_to_prl(DEFAULT_ROUTER_NAME);
 }
 
 
@@ -259,29 +271,76 @@ static int add_prl_entry(const char* host)
 static int fill_prl()
 {
 	int i;
-	for (i = 0; i < sizeof(router_name)/sizeof(router_name[0]); i++)
-		 if (router_name[i])
-	{
-		if (add_prl_entry(router_name[i]) < 0) {
-			return -1;
-		}
-	}
-
+	for (i=0; i < MAX_ROUTERS; i++)
+		if (router_name[i])
+			if (add_prl_entry(router_name[i]) < 0)
+				return -1;
 	return 0;
+}
+
+static uint32_t get_tunnel_saddr(const char* iface)
+{
+	struct addrinfo *addr_info, *p, hints;
+	int err;
+	uint32_t saddr;
+
+	if (iface)
+		return get_if_addr(iface);
+	if (router_name[0] == NULL)
+		return 0;
+
+	saddr = 0;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_protocol=IPPROTO_UDP;
+	err = getaddrinfo(router_name[0], NULL, &hints, &addr_info);
+
+	if (err) {
+		if (verbose >= 2)
+			fprintf(stderr, "getaddrinfo: %s: %s\n", router_name[0], gai_strerror(err));
+		return 0;
+	}
+	
+	p=addr_info;
+	while (p)
+	{
+		struct sockaddr_in addr;
+		socklen_t addrlen;
+		int fd = socket (AF_INET, SOCK_DGRAM, 0);
+		
+		if (fd < 0)
+			break;
+
+		
+		if (connect (fd, p->ai_addr, p->ai_addrlen) == 0) {
+			addrlen = sizeof(addr);
+			getsockname (fd, (struct sockaddr *)&addr, &addrlen);
+			if (addrlen == sizeof(addr))
+				saddr = addr.sin_addr.s_addr;
+		}
+		close (fd);
+
+		p=p->ai_next;
+	}
+	freeaddrinfo(addr_info);
+
+	return saddr;
 }
 
 
 static uint32_t start_isatap()
 {
 	uint32_t saddr;
+	
+	saddr = get_tunnel_saddr(interface_name);
 
-	saddr = get_if_addr(interface_name);
 	if (saddr == 0) {
 		if (verbose >= -1)
 			perror("get_if_addr");
 		exit(1);
 	}
-	
+
 	if (tunnel_add(tunnel_name, interface_name, saddr, ttl) < 0) {
 		if (verbose >= -1)
 			perror("tunnel_add");
@@ -289,7 +348,7 @@ static uint32_t start_isatap()
 	}
 
 	if (verbose >= 2)
-		printf("%s created (%s, 0x%08X)\n", tunnel_name, interface_name, ntohl(saddr));
+		fprintf(stderr, PACKAGE ": %s created (local %s)\n", tunnel_name, inet_ntoa(*(struct in_addr*)(&saddr)));
 
 	if (mtu > 0) {
 		if (tunnel_set_mtu(tunnel_name, mtu) < 0) {
@@ -307,7 +366,7 @@ static uint32_t start_isatap()
 		exit(1);
 	}
 	if (verbose >= 1)
-		printf("%s up\n", tunnel_name);
+		fprintf(stderr, PACKAGE ": %s up\n", tunnel_name);
 
 	return saddr;
 }
@@ -318,13 +377,13 @@ static void stop_isatap()
 		if (verbose >= -1)
 			perror("tunnel_down");
 	} else if (verbose >= 1)
-		printf("%s down\n", tunnel_name);
+		fprintf(stderr, PACKAGE ":%s down\n", tunnel_name);
 	
 	if (tunnel_del(tunnel_name) < 0) {
 		if (verbose >= -1)
 			perror("tunnel_del");
 	} else if (verbose >= 2)
-		printf("%s deleted\n", tunnel_name);
+		fprintf(stderr, PACKAGE ": %s deleted\n", tunnel_name);
 }
 
 
@@ -350,11 +409,14 @@ int main(int argc, char **argv)
 
 	parse_options(argc, argv);
 
-	if (tunnel_name == NULL) {
-		tunnel_name = (char *)malloc(strlen(interface_name)+3+1);
-		strcpy(tunnel_name, "is_");
-		strcat(tunnel_name, interface_name);
-	}
+	if (interface_name) {
+		if (tunnel_name == NULL) {
+			tunnel_name = (char *)malloc(strlen(interface_name)+3+1);
+			strcpy(tunnel_name, "is_");
+			strcat(tunnel_name, interface_name);
+		}
+	} else tunnel_name = strdup("is0");
+
 	if (strchr(tunnel_name, ':')) {
 		fprintf(stderr, PACKAGE ": no ':' in tunnel name: %s\n", tunnel_name);
 		exit(1);
@@ -372,7 +434,7 @@ int main(int argc, char **argv)
 				fprintf(stdout, "%d\n", pid);
 
 			if (verbose >= 1)
-				fprintf(stderr, PACKAGE ": running isatap daemon on interface %s\n", interface_name);
+				fprintf(stderr, PACKAGE ": running isatap daemon\n");
 			exit(0);
 		}
 		setsid();
@@ -381,6 +443,14 @@ int main(int argc, char **argv)
 		close(STDERR_FILENO);
 	}
 	if (daemonize == 2) {
+		saddr = get_tunnel_saddr(interface_name);
+		if (saddr == 0) {
+			if (interface_name == NULL)
+				fprintf(stderr, PACKAGE ": router %s unreachable...\n", router_name[0]);
+			else
+				perror("get_tunnel_saddr");
+			exit(1);
+		}	
 		saddr = start_isatap();
 		if (saddr == 0)
 			perror("start_isatap");
@@ -395,9 +465,13 @@ int main(int argc, char **argv)
 
 	while (!go_down)
 	{
-		while (get_if_addr(interface_name) == 0) {
-			if (verbose >= 0)
-				fprintf(stderr, PACKAGE ": link %s not ready...\n", interface_name);
+		while (get_tunnel_saddr(interface_name) == 0) {
+			if (verbose >= 0) {
+				if (interface_name)
+					fprintf(stderr, PACKAGE ": link %s not ready...\n", interface_name);
+				else
+					fprintf(stderr, PACKAGE ": router %s unreachable...\n", router_name[0]);
+			}
 			sleep(WAIT_FOR_LINK);
 			if (go_down)
 				break;
@@ -412,7 +486,7 @@ int main(int argc, char **argv)
 			sleep(probe_interval);
 			if (go_down)
 				break;
-			if ((get_if_addr(interface_name) != saddr) || (fill_prl() != 0)) {
+			if ((get_tunnel_saddr(interface_name) != saddr) || (fill_prl() != 0)) {
 				if (verbose >= 0)
 					fprintf(stderr, PACKAGE ": interface change detected, restarting.\n");
 				saddr = 0;
