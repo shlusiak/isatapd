@@ -329,12 +329,8 @@ static uint32_t get_tunnel_saddr(const char* iface)
 }
 
 
-static uint32_t start_isatap()
+static uint32_t start_isatap(uint32_t saddr)
 {
-	uint32_t saddr;
-	
-	saddr = get_tunnel_saddr(interface_name);
-
 	if (saddr == 0) {
 		if (verbose >= -1)
 			perror("get_if_addr");
@@ -451,7 +447,7 @@ int main(int argc, char **argv)
 				perror("get_tunnel_saddr");
 			exit(1);
 		}	
-		saddr = start_isatap();
+		saddr = start_isatap(saddr);
 		if (saddr == 0)
 			perror("start_isatap");
 		fill_prl();
@@ -465,7 +461,7 @@ int main(int argc, char **argv)
 
 	while (!go_down)
 	{
-		while (get_tunnel_saddr(interface_name) == 0) {
+		while ((saddr = get_tunnel_saddr(interface_name)) == 0) {
 			if (verbose >= 0) {
 				if (interface_name)
 					fprintf(stderr, PACKAGE ": link %s not ready...\n", interface_name);
@@ -479,7 +475,7 @@ int main(int argc, char **argv)
 		if (go_down)
 			break;
 
-		saddr = start_isatap();
+		saddr = start_isatap(saddr);
 		fill_prl();
 
 		while (1) {
