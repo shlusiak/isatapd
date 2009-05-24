@@ -1,4 +1,4 @@
-AM_CFLAGS = -Wall -pedantic
+AM_CFLAGS = -Wall -pedantic -Werror
 
 
 bin_PROGRAMS = isatapd
@@ -9,4 +9,3 @@ isatapd_SOURCES = \
 	tunnel.c tunnel.h \
 	rdisc.c rdisc.h
 
-#isatapd_CFLAGS =
