@@ -299,10 +299,6 @@ static void stop_isatap()
 		printf("%s deleted\n", tunnel_name);
 }
 
-void sigalrm_handler(int sig)
-{
-	alarm(probe_interval);
-}
 
 void sigint_handler(int sig)
 {
@@ -330,6 +326,10 @@ int main(int argc, char **argv)
 		tunnel_name = (char *)malloc(strlen(interface_name)+3+1);
 		strcpy(tunnel_name, "is_");
 		strcat(tunnel_name, interface_name);
+	}
+	if (strchr(tunnel_name, ':')) {
+		fprintf(stderr, PACKAGE ": no ':' in tunnel name: %s\n", tunnel_name);
+		exit(1);
 	}
 
 	if (daemonize == 1) {
@@ -363,7 +363,6 @@ int main(int argc, char **argv)
 
 	signal(SIGINT, sigint_handler);
 	signal(SIGTERM, sigint_handler);
-	signal(SIGALRM, sigalrm_handler);
 	signal(SIGHUP, sighup_handler);
 
 	while (!go_down)
@@ -380,14 +379,12 @@ int main(int argc, char **argv)
 
 		saddr = start_isatap();
 		fill_prl();
-		alarm(probe_interval);
 
 		while (1) {
-			pause();
+			sleep(probe_interval);
 			if (go_down)
 				break;
 			if ((get_if_addr(interface_name) != saddr) || (fill_prl() != 0)) {
-				alarm(0);
 				if (verbose >= 0)
 					fprintf(stderr, PACKAGE ": interface change detected, restarting.\n");
 				saddr = 0;
