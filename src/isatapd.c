@@ -79,7 +79,7 @@ static void show_help()
 static void show_version()
 {
 	fprintf(stderr, PACKAGE "-" VERSION "\n\n");
-	fprintf(stderr, "Copyright (c) 2009 Sascha Hlusiak\n");
+	fprintf(stderr, "Copyright (c) 2009 Sascha Hlusiak <mail@saschahlusiak.de>\n");
 	fprintf(stderr, "\nThis is free software; You may redistribute copies of this software\n");
 	fprintf(stderr, "under the terms of the GNU General Public License.\n");
 	fprintf(stderr, "For more information about these matters, see the file named COPYING.\n");
