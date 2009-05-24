@@ -186,3 +186,24 @@ int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr)
 	close(fd);
 	return 0;
 }
+
+int tunnel_set_mtu(const char *dev, int mtu)
+{
+	struct ifreq ifr;
+	int fd;
+
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return -1;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+	ifr.ifr_mtu = mtu;
+	if (ioctl(fd, SIOCSIFMTU, &ifr) < 0) {
+		close(fd);
+		return -1;
+	}
+	close(fd);
+
+	return 0;
+}

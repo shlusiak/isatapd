@@ -41,6 +41,7 @@ static int   router_num = 0;
 static int   probe_interval = 600;
 static int   verbose = 0;
 static int   daemonize = 0;
+static int   mtu = 0;
 static int volatile go_down = 0;
 
 
@@ -52,6 +53,8 @@ static void show_help()
 	fprintf(stderr, "Usage: isatapd [OPTIONS] interface...\n");
 	fprintf(stderr, "       interface       tunnel link device\n");
 	fprintf(stderr, "       -n --name       name of the tunnel\n");
+	fprintf(stderr, "                       default: auto\n");
+	fprintf(stderr, "          --mtu        set MTU of tunnel\n");
 	fprintf(stderr, "                       default: auto\n");
 	fprintf(stderr, "\n");
 
@@ -101,6 +104,7 @@ static void parse_options(int argc, char** argv)
 		{"daemon", 0, NULL, 'd'},
 		{"one-shot", 0, NULL, '1'},
 		{"version", 0, NULL, 'V'},
+		{"mtu", 1, NULL, 'm'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -137,6 +141,12 @@ static void parse_options(int argc, char** argv)
 		case 'd': daemonize = 1;
 			break;
 		case '1': daemonize = 2;
+			break;
+		case 'm': mtu = atoi(optarg);
+			if (mtu <= 0) {
+				fprintf(stderr, PACKAGE ": invalid cardinal -- %s\n", optarg);
+				show_help();
+			}
 			break;
 
 		case 'V': show_version();
@@ -271,6 +281,15 @@ static uint32_t start_isatap()
 
 	if (verbose >= 2)
 		printf("%s created (%s, 0x%08X)\n", tunnel_name, interface_name, ntohl(saddr));
+
+	if (mtu > 0) {
+		if (tunnel_set_mtu(tunnel_name, mtu) < 0) {
+			if (verbose >= -1)
+				perror("tunnel_set_mtu");
+			tunnel_del(tunnel_name);
+			exit(1);
+		}
+	}
 
 	if (tunnel_up(tunnel_name) < 0) {
 		if (verbose >= -1)
