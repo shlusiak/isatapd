@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -45,6 +46,7 @@ static char* router_name[MAX_ROUTERS] = { NULL };
 static int   probe_interval = 600;
 static int   verbose = 0;
 static int   daemonize = 0;
+static char* pid_file = NULL;
 static int   ttl = 64;
 static int   mtu = 0;
 static int   volatile go_down = 0;
@@ -72,6 +74,7 @@ static void show_help()
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -d --daemon     fork into background\n");
+	fprintf(stderr, "       -p --pid        store pid of daemon in file\n");
 	fprintf(stderr, "       -1 --one-shot   only set up tunnel and PRL, then exit\n");
 	fprintf(stderr, "\n");
 
@@ -111,7 +114,7 @@ static int add_name_to_prl(const char* name)
 static void parse_options(int argc, char** argv)
 {
 	int c;
-	const char* short_options = "hn:i:r:vqd1l:";
+	const char* short_options = "hn:i:r:vqd1l:p:";
 	struct option long_options[] = {
 		{"help", 0, NULL, 'h'},
 		{"name", 1, NULL, 'n'},
@@ -124,6 +127,7 @@ static void parse_options(int argc, char** argv)
 		{"one-shot", 0, NULL, '1'},
 		{"version", 0, NULL, 'V'},
 		{"mtu", 1, NULL, 'm'},
+		{"pid", 1, NULL, 'p'},
 		{"ttl", 1, NULL, 't'},
 		{NULL, 0, NULL, 0}
 	};
@@ -156,6 +160,8 @@ static void parse_options(int argc, char** argv)
 		case 'q': verbose--;
 			break;
 		case 'd': daemonize = 1;
+			break;
+		case 'p': pid_file = strdup(optarg);
 			break;
 		case '1': daemonize = 2;
 			break;
@@ -420,23 +426,18 @@ int main(int argc, char **argv)
 
 	if (daemonize == 1) {
 		pid_t pid;
+
 		pid = fork();
 		if (pid < 0) {
 			perror("fork");
 			exit(1);
 		}
 		if (pid > 0) { /* Server */
-			if (verbose >= -1)
-				fprintf(stdout, "%d\n", pid);
-
 			if (verbose >= 1)
-				fprintf(stderr, PACKAGE ": running isatap daemon\n");
+				fprintf(stderr, PACKAGE ": running isatap daemon as pid %d\n",(int)pid);
 			exit(0);
 		}
-		setsid();
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
+		/* Client */
 	}
 	if (daemonize == 2) {
 		saddr = get_tunnel_saddr(interface_name);
@@ -452,6 +453,40 @@ int main(int argc, char **argv)
 			perror("start_isatap");
 		fill_prl();
 		exit(0);
+	}
+
+	if (pid_file != NULL) {
+		struct flock fl;
+		char s[32];
+		int pf;
+
+		pf = open(pid_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (pf < 0) {
+			perror("Cannot create pid file, terminating");
+			exit(1);
+		}
+		snprintf(s, sizeof(s), "%d\n", (int)getpid());
+		if (write(pf, s, strlen(s)) < strlen(s))
+			perror("write");
+		if (fsync(pf) < 0)
+			perror("fsync");
+
+		fl.l_type = F_WRLCK;
+		fl.l_whence = SEEK_SET;
+		fl.l_start = 0;
+		fl.l_len = 0;
+
+		if (fcntl(pf, F_SETLK, &fl) < 0) {
+			perror("Cannot lock pid file, terminating");
+			exit(1);
+		}
+	}
+
+	if (daemonize == 1) {
+		setsid();
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
 	}
 
 
@@ -490,6 +525,11 @@ int main(int argc, char **argv)
 			}
 		}
 		stop_isatap();
+	}
+
+	if (pid_file) {
+		if (unlink(pid_file) < 0)
+			perror("unlink pid file");
 	}
 
 	return 0;
