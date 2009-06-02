@@ -44,6 +44,7 @@ static char* tunnel_name = NULL;
 static char* interface_name = NULL;
 static char* router_name[MAX_ROUTERS] = { NULL };
 static int   probe_interval = 600;
+static int   send_rs = 1;
 static int   verbose = 0;
 static int   daemonize = 0;
 static char* pid_file = NULL;
@@ -69,6 +70,8 @@ static void show_help()
 
 	fprintf(stderr, "       -r --router     set potential router.\n");
 	fprintf(stderr, "                       default: '%s'.\n", DEFAULT_ROUTER_NAME);
+	fprintf(stderr, "          --no-rs      do not send router solicitations but let kernel do it\n");
+        fprintf(stderr, "                       default: send periodic solicitations\n");
 	fprintf(stderr, "       -i --interval   interval to check PRL and perform router solicitation\n");
 	fprintf(stderr, "                       default: %d seconds\n", probe_interval);
 	fprintf(stderr, "\n");
@@ -127,6 +130,7 @@ static void parse_options(int argc, char** argv)
 		{"one-shot", 0, NULL, '1'},
 		{"version", 0, NULL, 'V'},
 		{"mtu", 1, NULL, 'm'},
+		{"no-rs", 0, NULL, 'R'},
 		{"pid", 1, NULL, 'p'},
 		{"ttl", 1, NULL, 't'},
 		{NULL, 0, NULL, 0}
@@ -179,6 +183,8 @@ static void parse_options(int argc, char** argv)
 			break;
 
 		case 'V': show_version();
+			break;
+		case 'R': send_rs = 0;
 			break;
 
 		default:
@@ -234,36 +240,38 @@ static int add_prl_entry(const char* host)
 				perror("tunnel_add_prl");
 		}
 		
-		addr6.s6_addr32[0] = htonl(0xfe800000);
-		addr6.s6_addr32[1] = htonl(0x00000000);
-		addr6.s6_addr32[2] = htonl(0x00005efe);
-		addr6.s6_addr32[3] = addr.s_addr;
+		if (send_rs) {
+			addr6.s6_addr32[0] = htonl(0xfe800000);
+			addr6.s6_addr32[1] = htonl(0x00000000);
+			addr6.s6_addr32[2] = htonl(0x00005efe);
+			addr6.s6_addr32[3] = addr.s_addr;
 
-		if (verbose >= 2) {
-			fprintf(stderr, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
-		}
-		if (send_rdisc(tunnel_name, &addr6) < 0) {
-			if (verbose >= -1) {
-				perror("send_rdisc");
+			if (verbose >= 2) {
+				fprintf(stderr, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
 			}
-			freeaddrinfo(addr_info);
-			return -1;
-		}
-
-		addr6.s6_addr32[0] = htonl(0xfe800000);
-		addr6.s6_addr32[1] = htonl(0x00000000);
-		addr6.s6_addr32[2] = htonl(0x02005efe);
-		addr6.s6_addr32[3] = addr.s_addr;
-
-		if (verbose >= 2) {
-			fprintf(stderr, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
-		}
-		if (send_rdisc(tunnel_name, &addr6) < 0) {
-			if (verbose >= -1) {
-				perror("send_rdisc");
+			if (send_rdisc(tunnel_name, &addr6) < 0) {
+				if (verbose >= -1) {
+					perror("send_rdisc");
+				}
+				freeaddrinfo(addr_info);
+				return -1;
 			}
-			freeaddrinfo(addr_info);
-			return -1;
+
+			addr6.s6_addr32[0] = htonl(0xfe800000);
+			addr6.s6_addr32[1] = htonl(0x00000000);
+			addr6.s6_addr32[2] = htonl(0x02005efe);
+			addr6.s6_addr32[3] = addr.s_addr;
+
+			if (verbose >= 2) {
+				fprintf(stderr, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
+			}
+			if (send_rdisc(tunnel_name, &addr6) < 0) {
+				if (verbose >= -1) {
+					perror("send_rdisc");
+				}
+				freeaddrinfo(addr_info);
+				return -1;
+			}
 		}
 
 		p=p->ai_next;
