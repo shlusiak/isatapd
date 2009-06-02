@@ -1,0 +1,117 @@
+.\" shorthand for double quote that works everywhere.
+.ds q \N'34'
+.TH isatapd 8 "June 2nd, 2009" __version__ "ISATAP client for Linux"
+.SH NAME
+isatapd \- ISATAP client for Linux
+
+.SH SYNOPSIS
+.B isatapd
+\fB\-\-help\fP
+.br
+.B isatapd
+[ \fB\-\-daemon\fP ] [ \fB\-\-link\fP \fIdevice\fP ] [ \fBoptions\fP ] [ \fIrouter\fP ] [ \fI...\fP ]
+
+.SH DESCRIPTION
+.B isatapd
+is a userspace program or daemon that sets up and maintains an ISATAP tunnel by using the kernels ISATAP capabilities, first introduced with 2.6.25. 
+
+The program will create the tunnel, periodically query the specified routers, add them to the 
+.I potential router list
+and send periodic router solicitations. 
+.B isatapd
+will try to keep the tunnel up and running, even if the network topology changes.
+
+See
+.B NOTES
+below for more information
+
+.SH "OPTIONS"
+.TP
+\fB\-n \-\-name\fP \fIname\fP
+Name of the tunnel interface. Default is \fIis0\fP for linkless tunnels and
+\fIis_$LINK\fP for tunnels linked to \fI$LINK\fP.
+.TP
+\fB\-l \-\-link\fP \fIdevice\fP
+Tunnel link device. If specified, tunnel will be restricted to that device, allowing multiple instances of
+.B isatapd
+with different tunnels. The tunnel can only exist as long as the link device is up and has a IPv4 address configured.
+
+If unspecified, the outgoing IPv4 address will be guessed for the first
+.I router
+and the tunnel created accordingly. The tunnel device will only created, if there is a possible IPv4 source address to reach the first router.
+.TP
+\fB\-\-mtu \fIbytes\fP
+Sets the MTU to 
+.I value
+for the tunnel device, minimum is 1280. If unspecified, the kernel will choose the MTU automatically, usually 1480.
+.TP
+\fB\-\-ttl\fP \fIhoplimit\fP
+Set the tunnel hoplimit, default is 64. The special value 0 means inherit the ttl.
+.TP
+\fB\-r \-\-router\fP \fIrouter\fP
+Set a potential router.
+.B isatapd
+will resolv the hostname, add the IPv4 address to the
+.I PRL
+and send periodic router solicitation messages. Up to 10 potential routers can be specified, the default is "isatap". 
+.TP
+\fB\-\-no\-rs\fP
+Do not send router solicitation messages to potential routers. Do not use, unless your kernel does stateless autoconf for ISATAP or you want to use static configuration. Linux kernel up to 2.6.30 does not do stateless autoconf for ISATAP.
+Default: send periodic router solicitations.
+.TP
+\fB\-i \-\-interval\fP \fIseconds\fP
+Interval to check the PRL, to send router solicitations and to check the state of the tunnel and the infrastructure. Make sure to set it lower than the default lifetime in the router advertisements.
+
+Default: 10 minutes
+.TP
+\fB\-\-daemon \-d\fP
+fork to background. No logging is available yet.
+.TP
+\fB\-p \-\-pid\fP \fIfile\fP
+Store the pid as plaintext to \fIfile\fP. The pid file will be write-locked to prevent multiple running instances. Useful for scripts and when running \fBisatapd\fP as a daemon.
+.TP
+\fB\-\-one\-shot \-1\fP
+Set up the tunnel interface, the PRL, send router solicitations once and then exit. Make sure you use in-kernel router solicitations or a static configuration to keep the tunnel operating.
+
+The interface can be manually configured using the
+.B ip(8)
+tool.
+.TP
+\fB\-v \-\-verbose\fP
+increase verbosity when running in foreground
+.TP
+\fB\-\-quiet \-q\fP
+decrease verbosity when running in foreground
+.TP
+\fB\-\-help \-h\fP
+print usage
+.TP
+\fB\-\-version\fP
+print version
+
+.SH "EXIT STATUS"
+On success \fIzero\fP is returned, otherwise a \fInon-zero\fP is returned.
+
+.SH "SIGNALS"
+.TP
+.B SIGHUP
+Force sending router solicitations and recreate the tunnel, if neccessary. 
+.TP
+.B SIGINT SIGTERM
+Gracefully shut down tunnel device and terminate.
+
+.SH "NOTES"
+.B isatapd
+does not process any kind of network data, so it should be moderately safe against network based attacks. to create the tunnel devic, root privileges are needed.
+
+Linux kernel\<\=2.6.30 does not send router solicitations to potential routers.
+.B isatapd
+will send router solicitations to \fIfe80::5efe:$IPv4\fP and \fIfe80::200:5efe:$IPv4\fP for every given potential router's IPv4 address. Unfortunately it's not possible yet to solicitate \fIff02::2\fP, so make sure your ISATAP router responds to above solicitations.
+
+Whenever the tunnel link interface goes down or the source address for the local tunnel endpoint changes, the tunnel device will be destroyed and recreated, if possible. Note that till then your tunnel might be in a unusable state.
+
+.SH AUTHORS
+Sascha Hlusiak \<mail\@saschahlusiak.de\>
+
+.SH "SEE ALSO"
+.BR ip (8)
