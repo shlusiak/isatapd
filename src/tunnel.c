@@ -169,6 +169,8 @@ int tunnel_del(const char *dev)
 	return 0;
 }
 
+
+/* TODO: add p.rs_delay, if available */
 int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr)
 {
 	struct ip_tunnel_prl p;

@@ -285,6 +285,7 @@ static int add_prl_entry(const char* host)
 static int fill_prl()
 {
 	int i;
+	/* TODO: remove stale PRL entries */
 	for (i=0; i < MAX_ROUTERS; i++)
 		if (router_name[i])
 			if (add_prl_entry(router_name[i]) < 0)

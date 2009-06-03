@@ -1,4 +1,5 @@
-EXTRA_DIST = $(man_MANS)
+EXTRA_DIST = isatapd.man
+DISTCLEANFILES = isatapd.8 isatapd.8.html
 
 man_MANS = isatapd.8
 
@@ -15,4 +16,4 @@ isatapd.8.html: isatapd.8
 	man2html isatapd.8 > isatapd.8.html
 
 clean:
-	rm -f isatapd.8.html isatapd.8
+	rm -f isatapd.8 isatapd.8.html
