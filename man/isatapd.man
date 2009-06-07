@@ -1,6 +1,6 @@
 .\" shorthand for double quote that works everywhere.
 .ds q \N'34'
-.TH isatapd 8 "June 2nd, 2009" __version__ "ISATAP client for Linux"
+.TH isatapd 8 "June 7th, 2009" __version__ "ISATAP client for Linux"
 .SH NAME
 isatapd \- ISATAP client for Linux
 
@@ -78,10 +78,10 @@ The interface can be manually configured using the
 tool.
 .TP
 \fB\-v \-\-verbose\fP
-increase verbosity when running in foreground
+increase verbosity
 .TP
 \fB\-\-quiet \-q\fP
-decrease verbosity when running in foreground
+decrease verbosity
 .TP
 \fB\-\-help \-h\fP
 print usage
@@ -100,6 +100,10 @@ Force sending router solicitations and recreate the tunnel, if neccessary.
 .B SIGINT SIGTERM
 Gracefully shut down tunnel device and terminate.
 
+.SH "SYSLOG"
+.B isatapd
+logs to stderr when run in foreground and to \fBsyslog\fP(3), using the facility \fILOG_DAEMON\fP. Verbosity can be controlled with the \fB\-v\fP and \fB\-q\fP switches.
+
 .SH "NOTES"
 .B isatapd
 does not process any kind of network data, so it should be moderately safe against network based attacks. to create the tunnel devic, root privileges are needed.
@@ -115,3 +119,4 @@ Sascha Hlusiak \<mail\@saschahlusiak.de\>
 
 .SH "SEE ALSO"
 .BR ip (8)
+.BR syslog-ng (8)
