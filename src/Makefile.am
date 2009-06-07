@@ -1,7 +1,7 @@
 AM_CFLAGS = -Wall
 
 
-bin_PROGRAMS = isatapd
+sbin_PROGRAMS = isatapd
 
 
 isatapd_SOURCES = \
