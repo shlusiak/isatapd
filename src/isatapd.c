@@ -18,6 +18,8 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <syslog.h>
+#include <errno.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -37,7 +39,7 @@
 
 #define MAX_ROUTERS 10
 #define DEFAULT_ROUTER_NAME "isatap"
-#define WAIT_FOR_LINK (10)  /* seconds between polling, if link is down */
+#define WAIT_FOR_LINK (15)  /* seconds between polling, if link is down */
 
 
 static char* tunnel_name = NULL;
@@ -52,6 +54,7 @@ static int   ttl = 64;
 static int   mtu = 0;
 static int   volatile go_down = 0;
 
+static int   syslog_facility = LOG_DAEMON;
 
 
 
@@ -218,7 +221,7 @@ static int add_prl_entry(const char* host)
 
 	if (err) {
 		if (verbose >= 0)
-			fprintf(stderr, "getaddrinfo: %s: %s\n", host, gai_strerror(err));
+			syslog(LOG_WARNING, "add_prl_entry: %s: %s\n", host, gai_strerror(err));
 		/* host not found is not fatal */
 		return 0;
 	}
@@ -232,12 +235,12 @@ static int add_prl_entry(const char* host)
 
 		addr = ((struct sockaddr_in*)(p->ai_addr))->sin_addr;
 		if (verbose >= 1)
-			printf("Adding PDR %s\n", inet_ntoa(addr));
+			syslog(LOG_INFO, "Adding PDR %s\n", inet_ntoa(addr));
 
 		if (tunnel_add_prl(tunnel_name, addr.s_addr, 1) < 0) {
 			/* hopefully not fatal. could be EEXIST */
 			if (verbose >= 2)
-				perror("tunnel_add_prl");
+				syslog(LOG_ERR, "tunnel_add_prl: %s\n", strerror(errno));
 		}
 		
 		if (send_rs) {
@@ -247,11 +250,11 @@ static int add_prl_entry(const char* host)
 			addr6.s6_addr32[3] = addr.s_addr;
 
 			if (verbose >= 2) {
-				fprintf(stderr, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
+				syslog(LOG_INFO, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
 			}
 			if (send_rdisc(tunnel_name, &addr6) < 0) {
 				if (verbose >= -1) {
-					perror("send_rdisc");
+					syslog(LOG_ERR, "send_rdisc: %s\n", strerror(errno));
 				}
 				freeaddrinfo(addr_info);
 				return -1;
@@ -263,11 +266,11 @@ static int add_prl_entry(const char* host)
 			addr6.s6_addr32[3] = addr.s_addr;
 
 			if (verbose >= 2) {
-				fprintf(stderr, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
+				syslog(LOG_INFO, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
 			}
 			if (send_rdisc(tunnel_name, &addr6) < 0) {
 				if (verbose >= -1) {
-					perror("send_rdisc");
+					syslog(LOG_ERR, "send_rdisc: %s\n", strerror(errno));
 				}
 				freeaddrinfo(addr_info);
 				return -1;
@@ -313,7 +316,7 @@ static uint32_t get_tunnel_saddr(const char* iface)
 
 	if (err) {
 		if (verbose >= 2)
-			fprintf(stderr, "getaddrinfo: %s: %s\n", router_name[0], gai_strerror(err));
+			syslog(LOG_WARNING, "getaddrinfo: %s: %s\n", router_name[0], gai_strerror(err));
 		return 0;
 	}
 	
@@ -348,23 +351,23 @@ static uint32_t start_isatap(uint32_t saddr)
 {
 	if (saddr == 0) {
 		if (verbose >= -1)
-			perror("get_if_addr");
+			syslog(LOG_ERR, "get_if_addr: %s\n", strerror(errno));
 		exit(1);
 	}
 
 	if (tunnel_add(tunnel_name, interface_name, saddr, ttl) < 0) {
 		if (verbose >= -1)
-			perror("tunnel_add");
+			syslog(LOG_ERR, "tunnel_add: %s\n", strerror(errno));
 		exit(1);
 	}
 
-	if (verbose >= 2)
-		fprintf(stderr, PACKAGE ": %s created (local %s)\n", tunnel_name, inet_ntoa(*(struct in_addr*)(&saddr)));
+	if (verbose >= 1)
+		syslog(LOG_INFO, "%s created (local %s)\n", tunnel_name, inet_ntoa(*(struct in_addr*)(&saddr)));
 
 	if (mtu > 0) {
 		if (tunnel_set_mtu(tunnel_name, mtu) < 0) {
 			if (verbose >= -1)
-				perror("tunnel_set_mtu");
+				syslog(LOG_ERR, "tunnel_set_mtu: %s\n", strerror(errno));
 			tunnel_del(tunnel_name);
 			exit(1);
 		}
@@ -372,12 +375,12 @@ static uint32_t start_isatap(uint32_t saddr)
 
 	if (tunnel_up(tunnel_name) < 0) {
 		if (verbose >= -1)
-			perror("tunnel_up");
+			syslog(LOG_ERR, "tunnel_up: %s\n", strerror(errno));
 		tunnel_del(tunnel_name);
 		exit(1);
 	}
-	if (verbose >= 1)
-		fprintf(stderr, PACKAGE ": %s up\n", tunnel_name);
+	if (verbose >= 0)
+		syslog(LOG_NOTICE, "interface %s up\n", tunnel_name);
 
 	return saddr;
 }
@@ -386,15 +389,15 @@ static void stop_isatap()
 {
 	if (tunnel_down(tunnel_name) < 0) {
 		if (verbose >= -1)
-			perror("tunnel_down");
-	} else if (verbose >= 1)
-		fprintf(stderr, PACKAGE ":%s down\n", tunnel_name);
+			syslog(LOG_ERR, "tunnel_down: %s\n", strerror(errno));
+	} else if (verbose >= 0)
+		syslog(LOG_NOTICE, "interface %s down\n", tunnel_name);
 	
 	if (tunnel_del(tunnel_name) < 0) {
 		if (verbose >= -1)
-			perror("tunnel_del");
-	} else if (verbose >= 2)
-		fprintf(stderr, PACKAGE ": %s deleted\n", tunnel_name);
+			syslog(LOG_ERR, "tunnel_del: %s\n", strerror(errno));
+	} else if (verbose >= 1)
+		syslog(LOG_INFO, "%s deleted\n", tunnel_name);
 }
 
 
@@ -402,14 +405,14 @@ void sigint_handler(int sig)
 {
 	signal(sig, SIG_DFL);
 	if (verbose >= 0)
-		fprintf(stderr, "signal %d received, going down.\n", sig);
+		syslog(LOG_NOTICE, "signal %d received, going down.\n", sig);
 	go_down = 1;
 }
 
 void sighup_handler(int sig)
 {
 	if (verbose >= 0)
-		fprintf(stderr, "SIGHUP received.\n");
+		syslog(LOG_NOTICE, "SIGHUP received.\n");
 }
 
 
@@ -419,6 +422,7 @@ int main(int argc, char **argv)
 	uint32_t saddr;
 
 	parse_options(argc, argv);
+	openlog(NULL, LOG_PID | LOG_PERROR, syslog_facility);
 
 	if (interface_name) {
 		if (tunnel_name == NULL) {
@@ -438,10 +442,11 @@ int main(int argc, char **argv)
 
 		pid = fork();
 		if (pid < 0) {
-			perror("fork");
+			syslog(LOG_ERR, "fork: %s\n", strerror(errno));
 			exit(1);
 		}
-		if (pid > 0) { /* Server */
+		if (pid > 0) {
+			/* Server */
 			if (verbose >= 1)
 				fprintf(stderr, PACKAGE ": running isatap daemon as pid %d\n",(int)pid);
 			exit(0);
@@ -461,9 +466,10 @@ int main(int argc, char **argv)
 		if (saddr == 0)
 			perror("start_isatap");
 		fill_prl();
+		/* one-shot, exit program when done */
 		exit(0);
 	}
-
+	
 	if (pid_file != NULL) {
 		struct flock fl;
 		char s[32];
@@ -471,14 +477,14 @@ int main(int argc, char **argv)
 
 		pf = open(pid_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 		if (pf < 0) {
-			perror("Cannot create pid file, terminating");
+			syslog(LOG_ERR, "Cannot create pid file, terminating: %s\n", strerror(errno));
 			exit(1);
 		}
 		snprintf(s, sizeof(s), "%d\n", (int)getpid());
 		if (write(pf, s, strlen(s)) < strlen(s))
-			perror("write");
+			syslog(LOG_ERR, "write: %s\n", strerror(errno));
 		if (fsync(pf) < 0)
-			perror("fsync");
+			syslog(LOG_ERR, "fsync: %s\n", strerror(errno));
 
 		fl.l_type = F_WRLCK;
 		fl.l_whence = SEEK_SET;
@@ -486,7 +492,7 @@ int main(int argc, char **argv)
 		fl.l_len = 0;
 
 		if (fcntl(pf, F_SETLK, &fl) < 0) {
-			perror("Cannot lock pid file, terminating");
+			syslog(LOG_ERR, "Cannot lock pid file, terminating: %s\n", strerror(errno));
 			exit(1);
 		}
 	}
@@ -503,18 +509,33 @@ int main(int argc, char **argv)
 	signal(SIGTERM, sigint_handler);
 	signal(SIGHUP, sighup_handler);
 
+	saddr = 0;
 	while (!go_down)
 	{
-		while ((saddr = get_tunnel_saddr(interface_name)) == 0) {
+		if ((saddr = get_tunnel_saddr(interface_name)) == 0) {
 			if (verbose >= 0) {
 				if (interface_name)
-					fprintf(stderr, PACKAGE ": link %s not ready...\n", interface_name);
+					syslog(LOG_INFO, "waiting for link %s to become ready...\n", interface_name);
 				else
-					fprintf(stderr, PACKAGE ": router %s unreachable...\n", router_name[0]);
+					syslog(LOG_INFO, "waiting for router %s to become reachable...\n", router_name[0]);
 			}
-			sleep(WAIT_FOR_LINK);
-			if (go_down)
-				break;
+
+			do {
+				if (verbose >= 2) {
+					syslog(LOG_DEBUG, "still waiting for link...\n");
+				}
+				sleep(WAIT_FOR_LINK);
+				saddr = get_tunnel_saddr(interface_name);
+			} while ((go_down == 0) && (saddr == 0));
+
+			if (verbose >= 0) {
+				if (saddr) {
+					if (interface_name)
+						syslog(LOG_INFO, "link %s became ready...\n", interface_name);
+					else
+						syslog(LOG_INFO, "router %s became reachable...\n", router_name[0]);
+				}
+			}
 		}
 		if (go_down)
 			break;
@@ -528,7 +549,7 @@ int main(int argc, char **argv)
 				break;
 			if ((get_tunnel_saddr(interface_name) != saddr) || (fill_prl() != 0)) {
 				if (verbose >= 0)
-					fprintf(stderr, PACKAGE ": interface change detected, restarting.\n");
+					syslog(LOG_INFO, "link change detected, restarting.\n");
 				saddr = 0;
 				break;
 			}
@@ -538,8 +559,9 @@ int main(int argc, char **argv)
 
 	if (pid_file) {
 		if (unlink(pid_file) < 0)
-			perror("unlink pid file");
+			syslog(LOG_WARNING, "cannot unlink pid file: %s\n", strerror(errno));
 	}
+	closelog();
 
 	return 0;
 }
