@@ -170,8 +170,7 @@ int tunnel_del(const char *dev)
 }
 
 
-/* TODO: add p.rs_delay, if available */
-int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr)
+int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr, int rs_delay)
 {
 	struct ip_tunnel_prl p;
 	struct ifreq ifr;
