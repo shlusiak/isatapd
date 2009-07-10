@@ -25,6 +25,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <sys/utsname.h>
 
 #define _GNU_SOURCE
 #include <getopt.h>
@@ -46,7 +47,7 @@ static char* tunnel_name = NULL;
 static char* interface_name = NULL;
 static char* router_name[MAX_ROUTERS] = { NULL };
 static int   probe_interval = 600;
-static int   send_rs = 1;
+static int   send_rs = -1;
 static int   verbose = 0;
 static int   daemonize = 0;
 static char* pid_file = NULL;
@@ -73,8 +74,11 @@ static void show_help()
 
 	fprintf(stderr, "       -r --router     set potential router.\n");
 	fprintf(stderr, "                       default: '%s'.\n", DEFAULT_ROUTER_NAME);
-	fprintf(stderr, "          --no-rs      do not send router solicitations but let kernel do it\n");
-        fprintf(stderr, "                       default: send periodic solicitations\n");
+	
+	fprintf(stderr, "          --user-rs\n");
+        fprintf(stderr, "          --no-user-rs do or do not send router solicitations from userspace.\n");
+        fprintf(stderr, "                       linux >=2.6.31 will send solicitations from kernelspace.\n");
+        fprintf(stderr, "                       default: auto\n");
 	fprintf(stderr, "       -i --interval   interval to check PRL and perform router solicitation\n");
 	fprintf(stderr, "                       default: %d seconds\n", probe_interval);
 	fprintf(stderr, "\n");
@@ -133,7 +137,8 @@ static void parse_options(int argc, char** argv)
 		{"one-shot", 0, NULL, '1'},
 		{"version", 0, NULL, 'V'},
 		{"mtu", 1, NULL, 'm'},
-		{"no-rs", 0, NULL, 'R'},
+		{"user-rs", 0, NULL, 'U'},
+		{"no-user-rs", 0, NULL, 'K'},
 		{"pid", 1, NULL, 'p'},
 		{"ttl", 1, NULL, 't'},
 		{NULL, 0, NULL, 0}
@@ -187,7 +192,9 @@ static void parse_options(int argc, char** argv)
 
 		case 'V': show_version();
 			break;
-		case 'R': send_rs = 0;
+		case 'K': send_rs = 0;
+			break;
+		case 'U': send_rs = 1;
 			break;
 
 		default:
@@ -237,7 +244,7 @@ static int add_prl_entry(const char* host)
 		if (verbose >= 1)
 			syslog(LOG_INFO, "Adding PDR %s\n", inet_ntoa(addr));
 
-		if (tunnel_add_prl(tunnel_name, addr.s_addr, 1) < 0) {
+		if (tunnel_add_prl(tunnel_name, addr.s_addr, 1, probe_interval) < 0) {
 			/* hopefully not fatal. could be EEXIST */
 			if (verbose >= 2)
 				syslog(LOG_ERR, "tunnel_add_prl: %s\n", strerror(errno));
@@ -436,6 +443,31 @@ int main(int argc, char **argv)
 		fprintf(stderr, PACKAGE ": no ':' in tunnel name: %s\n", tunnel_name);
 		exit(1);
 	}
+
+	if (send_rs == -1) {
+		struct utsname uts;
+		int x,y,z;
+	
+		/* Default in case of error: */
+#ifdef HAVE_IP_TUNNEL_PRL_RS_DELAY
+		send_rs = 0;
+#else
+		send_rs = 1;
+#endif
+
+		if (uname(&uts) < 0)
+			perror("uname");
+		else if (sscanf(uts.release, "%d.%d.%d", &x, &y, &z) < 3) {
+			fprintf(stderr, PACKAGE ": WARNING, unable to get running kernel. got: %s\n", uts.release);
+		} else {
+			/* Disable send_rs, if kernel >= 2.6.31 */
+			if ((x << 16) + (y << 8) + z >= 0x020600 + 31)
+				send_rs = 0;
+			else send_rs = 1;
+		}
+	}
+	if (verbose >= 1)
+		syslog(LOG_INFO, "userspace sending RS: %s\n", send_rs ? "on" : "off");
 
 	if (daemonize == 1) {
 		pid_t pid;

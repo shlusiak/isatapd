@@ -1,6 +1,6 @@
 .\" shorthand for double quote that works everywhere.
 .ds q \N'34'
-.TH isatapd 8 "June 7th, 2009" __version__ "ISATAP client for Linux"
+.TH isatapd 8 "July 10th, 2009" __version__ "ISATAP client for Linux"
 .SH NAME
 isatapd \- ISATAP client for Linux
 
@@ -53,16 +53,18 @@ Set a potential router.
 .B isatapd
 will resolv the hostname, add the IPv4 address to the
 .I PRL
-and send periodic router solicitation messages. Up to 10 potential routers can be specified, the default is "isatap". 
+and send periodic router solicitation messages. Up to 10 potential routers can be specified, the default is the unqualified domainname "isatap". 
 .TP
-\fB\-\-no\-rs\fP
-Do not send router solicitation messages to potential routers. Do not use, unless your kernel does stateless autoconf for ISATAP or you want to use static configuration. Linux kernel up to 2.6.30 does not do stateless autoconf for ISATAP.
-Default: send periodic router solicitations.
+\fB\-\-user\-rs\fP
+Send router solicitations to potential routers from userspace. Default for Linux \<= 2.6.30.
+.TP
+\fB\-\-no\-user\-rs\fP
+Do not send router solicitation messages to potential routers from userspace. Default for Linux \>\= 2.6.31.
 .TP
 \fB\-i \-\-interval\fP \fIseconds\fP
 Interval to check the PRL, to send router solicitations and to check the state of the tunnel and the infrastructure. Make sure to set it lower than the default lifetime in the router advertisements.
 
-Default: 10 minutes
+Default: 600 sec = 10 min
 .TP
 \fB\-\-daemon \-d\fP
 fork to background. No logging is available yet.
@@ -90,7 +92,7 @@ print usage
 print version
 
 .SH "EXIT STATUS"
-On success \fIzero\fP is returned, otherwise a \fInon-zero\fP is returned.
+On success \fIzero\fP is returned, otherwise a \fInon-zero\fP value is returned.
 
 .SH "SIGNALS"
 .TP
@@ -106,11 +108,18 @@ logs to stderr when run in foreground and to \fBsyslog\fP(3), using the facility
 
 .SH "NOTES"
 .B isatapd
-does not process any kind of network data, so it should be moderately safe against network based attacks. to create the tunnel devic, root privileges are needed.
+does not process any kind of network data, so it should be moderately safe against network based attacks. To create the tunnel device, root privileges are needed.
 
-Linux kernel\<\=2.6.30 does not send router solicitations to potential routers.
+Linux kernel \<\= 2.6.30 does not send router solicitations to potential routers.
 .B isatapd
-will send router solicitations to \fIfe80::5efe:$IPv4\fP and \fIfe80::200:5efe:$IPv4\fP for every given potential router's IPv4 address. Unfortunately it's not possible yet to solicitate \fIff02::2\fP, so make sure your ISATAP router responds to above solicitations.
+can send router solicitatioins to \fIfe80::5efe:$IPv4\fP and \fIfe80::200:5efe:$IPv4\fP for every given potential router\'s IPv4 address.
+If kernel support is detected,
+.B isatapd
+will prefer it over the userspace implementation. If you have problems, you can override this with 
+.B --user-rs
+and
+.B --no-user-rs 
+and make sure, your router is configured with a fully RFC compliant link local address. 
 
 Whenever the tunnel link interface goes down or the source address for the local tunnel endpoint changes, the tunnel device will be destroyed and recreated, if possible. Note that till then your tunnel might be in a unusable state.
 
@@ -120,3 +129,5 @@ Sascha Hlusiak \<mail\@saschahlusiak.de\>
 .SH "SEE ALSO"
 .BR ip (8)
 .BR syslog-ng (8)
+
+.B http://www.ietf.org/rfc/rfc5214.txt
