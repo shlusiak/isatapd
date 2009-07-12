@@ -110,7 +110,7 @@ static void show_help()
 	fprintf(stderr, "       -h --help       display this message\n");
 	fprintf(stderr, "          --version    display version\n");
 
-	exit(0);
+	exit(1);
 }
 
 static void show_version()
