@@ -7,6 +7,8 @@
 	* src/isatapd.c: detect running kernel to set send_rs
 			 new option --user-rs, rename --no-rs to --no-user-rs
 
+	* src/isatapd.c: Fix setting tunnel name with --name
+
 	* README: filled
 
 	* man/isatapd.man: reflect changes, minor fixes

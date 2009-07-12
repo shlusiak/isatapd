@@ -59,6 +59,21 @@ static int   syslog_facility = LOG_DAEMON;
 
 
 
+static void sigint_handler(int sig)
+{
+	signal(sig, SIG_DFL);
+	if (verbose >= 0)
+		syslog(LOG_NOTICE, "signal %d received, going down.\n", sig);
+	go_down = 1;
+}
+
+static void sighup_handler(int sig)
+{
+	if (verbose >= 0)
+		syslog(LOG_NOTICE, "SIGHUP received.\n");
+}
+
+
 static void show_help()
 {
 	fprintf(stderr, "Usage: isatapd [OPTIONS] [ROUTER]...\n");
@@ -430,22 +445,65 @@ static void detect_send_rs()
 	}
 }
 
-
-static void sigint_handler(int sig)
+static void write_pid_file()
 {
-	signal(sig, SIG_DFL);
-	if (verbose >= 0)
-		syslog(LOG_NOTICE, "signal %d received, going down.\n", sig);
-	go_down = 1;
+	struct flock fl;
+	char s[32];
+	int pf;
+
+	pf = open(pid_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (pf < 0) {
+		syslog(LOG_ERR, "Cannot create pid file, terminating: %s\n", strerror(errno));
+		exit(1);
+	}
+	snprintf(s, sizeof(s), "%d\n", (int)getpid());
+	if (write(pf, s, strlen(s)) < strlen(s))
+		syslog(LOG_ERR, "write: %s\n", strerror(errno));
+	if (fsync(pf) < 0)
+		syslog(LOG_ERR, "fsync: %s\n", strerror(errno));
+
+	fl.l_type = F_WRLCK;
+	fl.l_whence = SEEK_SET;
+	fl.l_start = 0;
+	fl.l_len = 0;
+
+	if (fcntl(pf, F_SETLK, &fl) < 0) {
+		syslog(LOG_ERR, "Cannot lock pid file, terminating: %s\n", strerror(errno));
+		exit(1);
+	}
 }
 
-static void sighup_handler(int sig)
+
+static uint32_t wait_for_link()
 {
-	if (verbose >= 0)
-		syslog(LOG_NOTICE, "SIGHUP received.\n");
+	uint32_t saddr;
+	if ((saddr = get_tunnel_saddr(interface_name)) == 0) {
+		if (verbose >= 0) {
+			if (interface_name)
+				syslog(LOG_INFO, "waiting for link %s to become ready...\n", interface_name);
+			else
+				syslog(LOG_INFO, "waiting for router %s to become reachable...\n", router_name[0]);
+		}
+
+		do {
+			if (verbose >= 2) {
+				syslog(LOG_DEBUG, "still waiting for link...\n");
+			}
+			sleep(WAIT_FOR_LINK);
+			saddr = get_tunnel_saddr(interface_name);
+		} while ((go_down == 0) && (saddr == 0));
+
+		if (verbose >= 0) {
+			if (saddr) {
+				if (interface_name)
+					syslog(LOG_INFO, "link %s became ready...\n", interface_name);
+				else
+					syslog(LOG_INFO, "router %s became reachable...\n", router_name[0]);
+			}
+		}
+	}
+	return saddr;
 }
-
-
 
 int main(int argc, char **argv)
 {
@@ -497,7 +555,7 @@ int main(int argc, char **argv)
 			else
 				perror("get_tunnel_saddr");
 			exit(1);
-		}	
+		}
 		saddr = start_isatap(saddr);
 		if (saddr == 0)
 			perror("start_isatap");
@@ -506,32 +564,8 @@ int main(int argc, char **argv)
 		exit(0);
 	}
 	
-	if (pid_file != NULL) {
-		struct flock fl;
-		char s[32];
-		int pf;
-
-		pf = open(pid_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-		if (pf < 0) {
-			syslog(LOG_ERR, "Cannot create pid file, terminating: %s\n", strerror(errno));
-			exit(1);
-		}
-		snprintf(s, sizeof(s), "%d\n", (int)getpid());
-		if (write(pf, s, strlen(s)) < strlen(s))
-			syslog(LOG_ERR, "write: %s\n", strerror(errno));
-		if (fsync(pf) < 0)
-			syslog(LOG_ERR, "fsync: %s\n", strerror(errno));
-
-		fl.l_type = F_WRLCK;
-		fl.l_whence = SEEK_SET;
-		fl.l_start = 0;
-		fl.l_len = 0;
-
-		if (fcntl(pf, F_SETLK, &fl) < 0) {
-			syslog(LOG_ERR, "Cannot lock pid file, terminating: %s\n", strerror(errno));
-			exit(1);
-		}
-	}
+	if (pid_file != NULL)
+		write_pid_file();
 
 	if (daemonize == 1) {
 		setsid();
@@ -540,7 +574,6 @@ int main(int argc, char **argv)
 		close(STDERR_FILENO);
 	}
 
-
 	signal(SIGINT, sigint_handler);
 	signal(SIGTERM, sigint_handler);
 	signal(SIGHUP, sighup_handler);
@@ -548,31 +581,7 @@ int main(int argc, char **argv)
 	saddr = 0;
 	while (!go_down)
 	{
-		if ((saddr = get_tunnel_saddr(interface_name)) == 0) {
-			if (verbose >= 0) {
-				if (interface_name)
-					syslog(LOG_INFO, "waiting for link %s to become ready...\n", interface_name);
-				else
-					syslog(LOG_INFO, "waiting for router %s to become reachable...\n", router_name[0]);
-			}
-
-			do {
-				if (verbose >= 2) {
-					syslog(LOG_DEBUG, "still waiting for link...\n");
-				}
-				sleep(WAIT_FOR_LINK);
-				saddr = get_tunnel_saddr(interface_name);
-			} while ((go_down == 0) && (saddr == 0));
-
-			if (verbose >= 0) {
-				if (saddr) {
-					if (interface_name)
-						syslog(LOG_INFO, "link %s became ready...\n", interface_name);
-					else
-						syslog(LOG_INFO, "router %s became reachable...\n", router_name[0]);
-				}
-			}
-		}
+		saddr = wait_for_link();
 		if (go_down)
 			break;
 
