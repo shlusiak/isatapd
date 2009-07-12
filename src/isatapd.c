@@ -285,7 +285,7 @@ static int add_prl_entry(const char* host)
 		}
 
 		p=p->ai_next;
-	}	
+	}
 	freeaddrinfo(addr_info);
 
 	return 0;
@@ -333,11 +333,10 @@ static uint32_t get_tunnel_saddr(const char* iface)
 		struct sockaddr_in addr;
 		socklen_t addrlen;
 		int fd = socket (AF_INET, SOCK_DGRAM, 0);
-		
+
 		if (fd < 0)
 			break;
 
-		
 		if (connect (fd, p->ai_addr, p->ai_addrlen) == 0) {
 			addrlen = sizeof(addr);
 			getsockname(fd, (struct sockaddr *)&addr, &addrlen);
@@ -407,8 +406,32 @@ static void stop_isatap()
 		syslog(LOG_INFO, "%s deleted\n", tunnel_name);
 }
 
+static void detect_send_rs()
+{
+	struct utsname uts;
+	int x,y,z;
 
-void sigint_handler(int sig)
+	/* Default in case of error: */
+#ifdef HAVE_IP_TUNNEL_PRL_RS_DELAY
+	send_rs = 0;
+#else
+	send_rs = 1;
+#endif
+
+	if (uname(&uts) < 0)
+		perror("uname");
+	else if (sscanf(uts.release, "%d.%d.%d", &x, &y, &z) < 3) {
+		fprintf(stderr, PACKAGE ": WARNING, unable to get running kernel. got: %s\n", uts.release);
+	} else {
+		/* Disable send_rs, if kernel >= 2.6.31 */
+		if ((x << 16) + (y << 8) + z >= 0x020600 + 31)
+			send_rs = 0;
+		else send_rs = 1;
+	}
+}
+
+
+static void sigint_handler(int sig)
 {
 	signal(sig, SIG_DFL);
 	if (verbose >= 0)
@@ -416,7 +439,7 @@ void sigint_handler(int sig)
 	go_down = 1;
 }
 
-void sighup_handler(int sig)
+static void sighup_handler(int sig)
 {
 	if (verbose >= 0)
 		syslog(LOG_NOTICE, "SIGHUP received.\n");
@@ -431,41 +454,22 @@ int main(int argc, char **argv)
 	parse_options(argc, argv);
 	openlog(NULL, LOG_PID | LOG_PERROR, syslog_facility);
 
-	if (interface_name) {
-		if (tunnel_name == NULL) {
+	if (tunnel_name == NULL) {
+		if (interface_name) {
 			tunnel_name = (char *)malloc(strlen(interface_name)+3+1);
 			strcpy(tunnel_name, "is_");
 			strcat(tunnel_name, interface_name);
-		}
-	} else tunnel_name = strdup("is0");
+		} else tunnel_name = strdup("is0");
+	}
 
 	if (strchr(tunnel_name, ':')) {
 		fprintf(stderr, PACKAGE ": no ':' in tunnel name: %s\n", tunnel_name);
 		exit(1);
 	}
 
-	if (send_rs == -1) {
-		struct utsname uts;
-		int x,y,z;
-	
-		/* Default in case of error: */
-#ifdef HAVE_IP_TUNNEL_PRL_RS_DELAY
-		send_rs = 0;
-#else
-		send_rs = 1;
-#endif
+	if (send_rs == -1)
+		detect_send_rs();
 
-		if (uname(&uts) < 0)
-			perror("uname");
-		else if (sscanf(uts.release, "%d.%d.%d", &x, &y, &z) < 3) {
-			fprintf(stderr, PACKAGE ": WARNING, unable to get running kernel. got: %s\n", uts.release);
-		} else {
-			/* Disable send_rs, if kernel >= 2.6.31 */
-			if ((x << 16) + (y << 8) + z >= 0x020600 + 31)
-				send_rs = 0;
-			else send_rs = 1;
-		}
-	}
 	if (verbose >= 1)
 		syslog(LOG_INFO, "userspace sending RS: %s\n", send_rs ? "on" : "off");
 
