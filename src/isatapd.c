@@ -177,7 +177,7 @@ static void parse_options(int argc, char** argv)
 		case 'i': if (optarg) {
 				probe_interval = atoi(optarg);
 				if (probe_interval <= 0) {
-					fprintf(stderr, PACKAGE ": invalid cardinal -- %s\n", optarg);
+					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
 					show_help();
 				}
 			}
@@ -194,13 +194,13 @@ static void parse_options(int argc, char** argv)
 			break;
 		case 'm': mtu = atoi(optarg);
 			if (mtu <= 0) {
-				fprintf(stderr, PACKAGE ": invalid mtu -- %s\n", optarg);
+				syslog(LOG_ERR, "invalid mtu -- %s\n", optarg);
 				show_help();
 			}
 			break;
 		case 't': ttl = atoi(optarg);
 			if (ttl <= 0 || ttl > 255) {
-				fprintf(stderr, PACKAGE ": invalid ttl -- %s\n", optarg);
+				syslog(LOG_ERR, "invalid ttl -- %s\n", optarg);
 				show_help();
 			}
 			break;
@@ -213,7 +213,7 @@ static void parse_options(int argc, char** argv)
 			break;
 
 		default:
-			fprintf(stderr, PACKAGE ": not implemented option -- %s\n", argv[optind-1]);
+			syslog(LOG_ERR, "not implemented option -- %s\n", argv[optind-1]);
 		case 'h':
 		case '?':
 			show_help();
@@ -436,7 +436,7 @@ static void detect_send_rs()
 	if (uname(&uts) < 0)
 		perror("uname");
 	else if (sscanf(uts.release, "%d.%d.%d", &x, &y, &z) < 3) {
-		fprintf(stderr, PACKAGE ": WARNING, unable to get running kernel. got: %s\n", uts.release);
+		syslog(LOG_WARNING, "WARNING, unable to get running kernel. got: %s\n", uts.release);
 	} else {
 		/* Disable send_rs, if kernel >= 2.6.31 */
 		if ((x << 16) + (y << 8) + z >= 0x020600 + 31)
@@ -509,8 +509,8 @@ int main(int argc, char **argv)
 {
 	uint32_t saddr;
 
-	parse_options(argc, argv);
 	openlog(NULL, LOG_PID | LOG_PERROR, syslog_facility);
+	parse_options(argc, argv);
 
 	if (tunnel_name == NULL) {
 		if (interface_name) {
@@ -521,7 +521,7 @@ int main(int argc, char **argv)
 	}
 
 	if (strchr(tunnel_name, ':')) {
-		fprintf(stderr, PACKAGE ": no ':' in tunnel name: %s\n", tunnel_name);
+		syslog(LOG_ERR, "no ':' in tunnel name: %s!\n", tunnel_name);
 		exit(1);
 	}
 
