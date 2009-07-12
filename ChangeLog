@@ -16,8 +16,6 @@
 
 	* src/isatapd.c: detect running kernel to set send_rs
 			 new option --user-rs, rename --no-rs to --no-user-rs
-			 Fix setting tunnel name with --name
-			 exit(1) in case of parameter error and write to syslog
 
 	* README: filled
 
