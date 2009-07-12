@@ -382,8 +382,11 @@ static uint32_t start_isatap(uint32_t saddr)
 		exit(1);
 	}
 
-	if (verbose >= 1)
-		syslog(LOG_INFO, "%s created (local %s)\n", tunnel_name, inet_ntoa(*(struct in_addr*)(&saddr)));
+	if (verbose >= 1) {
+		struct in_addr addr;
+		addr.s_addr = saddr;
+		syslog(LOG_INFO, "%s created (local %s)\n", tunnel_name, inet_ntoa(addr));
+	}
 
 	if (mtu > 0) {
 		if (tunnel_set_mtu(tunnel_name, mtu) < 0) {
