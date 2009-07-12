@@ -1,19 +1,28 @@
-2009-07-11  Sascha Hlusiak  <mail@saschahlusiak.de>
+2009-07-12  Sascha Hlusiak  <mail@saschahlusiak.de>
+	* src/isatapd.c: fix warning about breaking strict-aliasing
 
-        * isatapd-0.9.5 released
 
-        * configure.in, src/tunnel.c: check for ip_tunnel_prl.rs_delay and pass to kernel
+2009-07-12  Sascha Hlusiak  <mail@saschahlusiak.de>
+	* isatapd-0.9.5 released
+
+	* src/isatapd.c: Fix setting tunnel name with --name
+			 exit(1) in case of parameter error and write to syslog
+
+	* openrc/: openrc compatible init scripts
+
+	* isatapd-0.9.5 released
+
+	* configure.in, src/tunnel.c: check for ip_tunnel_prl.rs_delay and pass to kernel
 
 	* src/isatapd.c: detect running kernel to set send_rs
 			 new option --user-rs, rename --no-rs to --no-user-rs
-
-	* src/isatapd.c: Fix setting tunnel name with --name
+			 Fix setting tunnel name with --name
+			 exit(1) in case of parameter error and write to syslog
 
 	* README: filled
 
 	* man/isatapd.man: reflect changes, minor fixes
 
 2009-06-07  Sascha Hlusiak  <mail@saschahlusiak.de>
-
-        * initial releases 0.9.0 to 0.9.4
+	* initial releases 0.9.0 to 0.9.4
 
