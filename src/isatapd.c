@@ -53,6 +53,7 @@ static int   daemonize = 0;
 static char* pid_file = NULL;
 static int   ttl = 64;
 static int   mtu = 0;
+static int   pmtudisc = 1;
 static int   volatile go_down = 0;
 
 static int   syslog_facility = LOG_DAEMON;
@@ -83,8 +84,10 @@ static void show_help()
 	fprintf(stderr, "                       default: auto\n");
 	fprintf(stderr, "          --mtu        set tunnel MTU\n");
 	fprintf(stderr, "                       default: auto\n");
-	fprintf(stderr, "          --ttl        set tunnel hoplimit\n");
+	fprintf(stderr, "          --ttl        set tunnel hoplimit.\n");
 	fprintf(stderr, "                       default: %d\n", ttl);
+	fprintf(stderr, "          --nopmtudisc disable ipv4 pmtu discovery.\n");
+	fprintf(stderr, "                       default: pmtudisc enabled\n");
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -r --router     set potential router.\n");
@@ -156,6 +159,7 @@ static void parse_options(int argc, char** argv)
 		{"no-user-rs", 0, NULL, 'K'},
 		{"pid", 1, NULL, 'p'},
 		{"ttl", 1, NULL, 't'},
+		{"nopmtudisc", 0, NULL, 'P'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -198,11 +202,17 @@ static void parse_options(int argc, char** argv)
 				show_help();
 			}
 			break;
-		case 't': ttl = atoi(optarg);
-			if (ttl <= 0 || ttl > 255) {
-				syslog(LOG_ERR, "invalid ttl -- %s\n", optarg);
-				show_help();
+		case 't': if ((strcmp(optarg, "auto") == 0) || (strcmp(optarg, "inherit") == 0))
+				ttl = 0;
+			else {
+				ttl = atoi(optarg);
+				if (ttl <= 0 || ttl > 255) {
+					syslog(LOG_ERR, "invalid ttl -- %s\n", optarg);
+					show_help();
+				}
 			}
+			break;
+		case 'P': pmtudisc = 0;
 			break;
 
 		case 'V': show_version();
@@ -376,7 +386,7 @@ static uint32_t start_isatap(uint32_t saddr)
 		exit(1);
 	}
 
-	if (tunnel_add(tunnel_name, interface_name, saddr, ttl) < 0) {
+	if (tunnel_add(tunnel_name, interface_name, saddr, ttl, pmtudisc) < 0) {
 		if (verbose >= -1)
 			syslog(LOG_ERR, "tunnel_add: %s\n", strerror(errno));
 		exit(1);
@@ -385,7 +395,7 @@ static uint32_t start_isatap(uint32_t saddr)
 	if (verbose >= 1) {
 		struct in_addr addr;
 		addr.s_addr = saddr;
-		syslog(LOG_INFO, "%s created (local %s)\n", tunnel_name, inet_ntoa(addr));
+		syslog(LOG_INFO, "%s created (local %s, %s)\n", tunnel_name, inet_ntoa(addr), pmtudisc?"pmtudisc":"nopmtudisc");
 	}
 
 	if (mtu > 0) {
@@ -525,6 +535,10 @@ int main(int argc, char **argv)
 
 	if (strchr(tunnel_name, ':')) {
 		syslog(LOG_ERR, "no ':' in tunnel name: %s!\n", tunnel_name);
+		exit(1);
+	}
+	if (pmtudisc == 0 && ttl) {
+		syslog(LOG_ERR, "--nopmtudisc depends on --ttl inherit!\n");
 		exit(1);
 	}
 

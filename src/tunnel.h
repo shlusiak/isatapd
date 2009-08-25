@@ -4,7 +4,8 @@
 int tunnel_add(const char *dev,
 		const char *link,
 		uint32_t saddr,
-		uint8_t ttl);
+		uint8_t ttl,
+		int pmtudisc);
 
 int tunnel_up(const char *dev);
 

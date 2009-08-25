@@ -46,7 +46,10 @@ Sets the MTU to
 for the tunnel device, minimum is 1280. If unspecified, the kernel will choose the MTU automatically, usually 1480.
 .TP
 \fB\-\-ttl\fP \fIhoplimit\fP
-Set the tunnel hoplimit, default is 64. The special value 0 means inherit the ttl.
+Set the tunnel hoplimit, default is 64. Specifying 'auto' or 'inherit' will make the tunnel inherit the ttl from the linked device.
+.TP
+\fB\-\-nopmtudisc\fP
+Disable (IPv4) Path MTU Discovery on this tunnel. For this to work --ttl has to be set to inherit. Default: do Path MTU Discovery to reduce redundant fragmentation.
 .TP
 \fB\-r \-\-router\fP \fIrouter\fP
 Set a potential router.
