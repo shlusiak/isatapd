@@ -28,6 +28,69 @@
 
 
 /**
+ * Return 0 if IPv4 address is global
+ * Return 1 if IPv4 Address is private
+ **/
+static int ipv4_is_private(uint32_t addr) {
+	uint8_t *b8 = (uint8_t*)&addr;
+	switch (b8[0]) {
+	case 0:
+	case 10:
+	case 14:
+	case 24:
+	case 39:
+	case 127:
+		return 1;
+		break;
+	case 128:
+		if (b8[1] == 0)
+			return 1;
+		break;
+	case 169:
+		if (b8[1] == 254)
+			return 1;
+		break;
+	case 172:
+		if ((b8[1] >= 16) && (b8[1] <= 31))
+			return 1;
+		break;
+	case 191:
+		if (b8[1] == 255)
+			return 1;
+		break;
+	case 192:
+		switch (b8[1]) {
+		case 0:
+			if ((b8[2] == 0)||(b8[2] == 2))
+				return 1;
+			break;
+		case 88:
+			if (b8[2] == 99)
+				return 1;
+			break;
+		case 168:
+			return 1;
+		default:
+			break;
+		}
+		break;
+	case 198:
+		if ((b8[1] == 18) || (b8[1] == 19))
+			return 1;
+		break;
+	case 223:
+		if ((b8[1] == 255) && (b8[2] == 255))
+			return 1;
+	default:
+		break;
+	}
+	return 0;
+}
+
+
+
+
+/**
  * Sends out one ISATAP-RS to a specified IPv4 address
  **/
 static int solicitate_router(int fd, char* tunnel_name, uint32_t router) {
@@ -36,8 +99,10 @@ static int solicitate_router(int fd, char* tunnel_name, uint32_t router) {
 
 	addr6.s6_addr32[0] = htonl(0xfe800000);
 	addr6.s6_addr32[1] = htonl(0x00000000);
-	addr6.s6_addr32[2] = htonl(0x00005efe);
+	addr6.s6_addr32[2] = htonl(0x02005efe);
 	addr6.s6_addr32[3] = router;
+	if (ipv4_is_private(router))
+		addr6.s6_addr32[2] ^= htonl(0x02000000);
 
 	if (verbose >= 2) {
 		syslog(LOG_INFO, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
