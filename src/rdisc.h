@@ -2,8 +2,8 @@
 #define _NDISC_H_INCLUDED_
 
 
-
-int send_rdisc(const char *dev, struct in6_addr *addr);
+int create_rs_socket();
+int send_rdisc(int fd, const char *dev, struct in6_addr *addr);
 
 
 

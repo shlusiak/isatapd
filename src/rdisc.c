@@ -25,11 +25,8 @@
 #include "rdisc.h"
 
 
-int send_rdisc(const char *dev, struct in6_addr *addr)
-{
+int create_rs_socket() {
 	int fd = socket (PF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
-	struct sockaddr_in6 target;
-	struct nd_router_solicit rs;
 	int i;
 
 	if (fd < 0)
@@ -62,6 +59,13 @@ int send_rdisc(const char *dev, struct in6_addr *addr)
 		close(fd);
 		return -1;
 	}
+	return fd;
+}
+
+int send_rdisc(int fd, const char *dev, struct in6_addr *addr)
+{
+	struct sockaddr_in6 target;
+	struct nd_router_solicit rs;
 
 	memset(&target, 0, sizeof(target));
 	memset(&rs, 0, sizeof(rs));
@@ -82,10 +86,7 @@ int send_rdisc(const char *dev, struct in6_addr *addr)
 			(const struct sockaddr *)&target,
 			sizeof (target)) != sizeof(rs))
 	{
-		close(fd);
 		return -1;
 	}
-
-	close(fd);
 	return 0;
 }

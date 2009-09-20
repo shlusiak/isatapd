@@ -171,7 +171,7 @@ int tunnel_del(const char *dev)
 }
 
 
-int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr, int rs_delay)
+int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr)
 {
 	struct ip_tunnel_prl p;
 	struct ifreq ifr;
@@ -181,11 +181,6 @@ int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr, int rs_delay
 	p.addr = addr;
 	if (default_rtr)
 		p.flags |= PRL_DEFAULT;
-#ifdef HAVE_IP_TUNNEL_PRL_RS_DELAY
-	p.rs_delay = rs_delay;
-#else
-	p.__reserved2 = rs_delay;
-#endif
 
 	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
 	ifr.ifr_ifru.ifru_data = (void*)&p;

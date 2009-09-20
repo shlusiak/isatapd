@@ -25,7 +25,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <sys/utsname.h>
+#include <sys/wait.h>
+
 
 #define _GNU_SOURCE
 #include <getopt.h>
@@ -36,25 +37,32 @@
 
 #include "tunnel.h"
 #include "rdisc.h"
+#include "isatap.h"
+#include "prl.h"
 
 
-#define MAX_ROUTERS 10
 #define DEFAULT_ROUTER_NAME "isatap"
 #define WAIT_FOR_LINK (15)  /* seconds between polling, if link is down */
 
 
 static char* tunnel_name = NULL;
 static char* interface_name = NULL;
-static char* router_name[MAX_ROUTERS] = { NULL };
-static int   probe_interval = 600;
-static int   send_rs = -1;
-static int   verbose = 0;
+
+
+struct ROUTER_NAME {
+	char* name;
+	struct ROUTER_NAME* next;
+} *router_name = NULL;
+
+static int   rs_interval = 600;
+       int   verbose = 0;
 static int   daemonize = 0;
 static char* pid_file = NULL;
 static int   ttl = 64;
 static int   mtu = 0;
 static int   pmtudisc = 1;
 static int   volatile go_down = 0;
+static pid_t child = 0;
 
 static int   syslog_facility = LOG_DAEMON;
 
@@ -65,6 +73,8 @@ static void sigint_handler(int sig)
 	signal(sig, SIG_DFL);
 	if (verbose >= 0)
 		syslog(LOG_NOTICE, "signal %d received, going down.\n", sig);
+	if (child)
+		kill(child, SIGTERM);
 	go_down = 1;
 }
 
@@ -72,7 +82,10 @@ static void sighup_handler(int sig)
 {
 	if (verbose >= 0)
 		syslog(LOG_NOTICE, "SIGHUP received.\n");
+	if (child)
+		kill(child, SIGTERM);
 }
+
 
 
 static void show_help()
@@ -93,12 +106,8 @@ static void show_help()
 	fprintf(stderr, "       -r --router     set potential router.\n");
 	fprintf(stderr, "                       default: '%s'.\n", DEFAULT_ROUTER_NAME);
 	
-	fprintf(stderr, "          --user-rs\n");
-        fprintf(stderr, "          --no-user-rs do or do not send router solicitations from userspace.\n");
-        fprintf(stderr, "                       linux >=2.6.31 will send solicitations from kernelspace.\n");
-        fprintf(stderr, "                       default: auto\n");
 	fprintf(stderr, "       -i --interval   interval to check PRL and perform router solicitation\n");
-	fprintf(stderr, "                       default: %d seconds\n", probe_interval);
+	fprintf(stderr, "                       default: %d seconds\n", rs_interval);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -d --daemon     fork into background\n");
@@ -127,16 +136,16 @@ static void show_version()
 	exit(0);
 }
 
-static int add_name_to_prl(const char* name)
+/**
+ * Adds a router name to the linked list of router names
+ **/
+static void add_router_name(const char* name)
 {
-	int i;
-	for (i=0; i < MAX_ROUTERS; i++)
-		if (router_name[i] == NULL)
-	{
-		router_name[i] = strdup(name);
-		return 0;
-	}
-	return -1;
+	struct ROUTER_NAME *n;
+	n = (struct ROUTER_NAME*)malloc(sizeof(struct ROUTER_NAME));
+	n->next = router_name;
+	router_name = n;
+	n->name = strdup(name);
 }
 
 static void parse_options(int argc, char** argv)
@@ -155,8 +164,6 @@ static void parse_options(int argc, char** argv)
 		{"one-shot", 0, NULL, '1'},
 		{"version", 0, NULL, 'V'},
 		{"mtu", 1, NULL, 'm'},
-		{"user-rs", 0, NULL, 'U'},
-		{"no-user-rs", 0, NULL, 'K'},
 		{"pid", 1, NULL, 'p'},
 		{"ttl", 1, NULL, 't'},
 		{"nopmtudisc", 0, NULL, 'P'},
@@ -176,11 +183,11 @@ static void parse_options(int argc, char** argv)
 				interface_name = strdup(optarg);
 			break;
 		case 'r': if (optarg)
-				add_name_to_prl(optarg);
+				add_router_name(optarg);
 			break;
 		case 'i': if (optarg) {
-				probe_interval = atoi(optarg);
-				if (probe_interval <= 0) {
+				rs_interval = atoi(optarg);
+				if (rs_interval <= 0) {
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
 					show_help();
 				}
@@ -217,10 +224,6 @@ static void parse_options(int argc, char** argv)
 
 		case 'V': show_version();
 			break;
-		case 'K': send_rs = 0;
-			break;
-		case 'U': send_rs = 1;
-			break;
 
 		default:
 			syslog(LOG_ERR, "not implemented option -- %s\n", argv[optind-1]);
@@ -232,148 +235,120 @@ static void parse_options(int argc, char** argv)
 	}
 
 	for (; optind < argc; optind++)
-		add_name_to_prl(argv[optind]);
-	if (router_name[0] == NULL)
-		add_name_to_prl(DEFAULT_ROUTER_NAME);
+		add_router_name(argv[optind]);
+	if (router_name == NULL)
+		add_router_name(DEFAULT_ROUTER_NAME);
 }
 
 
-static int add_prl_entry(const char* host)
+
+
+/**
+ * Fills the linked list of PRL entries with IPs
+ * derived from router names (DNS)
+ **/
+static int fillPRL()
 {
-	struct addrinfo *addr_info, *p, hints;
-	int err;
-
-	if (host == NULL)
-		return 0;
-
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_protocol=IPPROTO_IPV6;
-	err = getaddrinfo(host, NULL, &hints, &addr_info);
-
-	if (err) {
-		if (verbose >= 0)
-			syslog(LOG_WARNING, "add_prl_entry: %s: %s\n", host, gai_strerror(err));
-		/* host not found is not fatal */
-		return 0;
+	struct ROUTER_NAME* r;
+	flushPRL();
+	r = router_name;
+	while (r) {
+		if (add_router_name_to_prl(r->name, rs_interval) < 0)
+			return -1;
+		r = r->next;
 	}
-
-	p=addr_info;
-	while (p)
-	{
-		struct in_addr addr;
-		struct in6_addr addr6;
-		static char addrstr[INET6_ADDRSTRLEN];
-
-		addr = ((struct sockaddr_in*)(p->ai_addr))->sin_addr;
-		if (verbose >= 1)
-			syslog(LOG_INFO, "Adding PDR %s\n", inet_ntoa(addr));
-
-		if (tunnel_add_prl(tunnel_name, addr.s_addr, 1, probe_interval) < 0) {
-			/* hopefully not fatal. could be EEXIST */
-			if (verbose >= 2)
-				syslog(LOG_ERR, "tunnel_add_prl: %s\n", strerror(errno));
-		}
-		
-		if (send_rs) {
-			addr6.s6_addr32[0] = htonl(0xfe800000);
-			addr6.s6_addr32[1] = htonl(0x00000000);
-			addr6.s6_addr32[2] = htonl(0x00005efe);
-			addr6.s6_addr32[3] = addr.s_addr;
-
-			if (verbose >= 2) {
-				syslog(LOG_INFO, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
-			}
-			if (send_rdisc(tunnel_name, &addr6) < 0) {
-				if (verbose >= -1) {
-					syslog(LOG_ERR, "send_rdisc: %s\n", strerror(errno));
-				}
-				freeaddrinfo(addr_info);
-				return -1;
-			}
-
-			addr6.s6_addr32[0] = htonl(0xfe800000);
-			addr6.s6_addr32[1] = htonl(0x00000000);
-			addr6.s6_addr32[2] = htonl(0x02005efe);
-			addr6.s6_addr32[3] = addr.s_addr;
-
-			if (verbose >= 2) {
-				syslog(LOG_INFO, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6, addrstr, sizeof(addrstr)));
-			}
-			if (send_rdisc(tunnel_name, &addr6) < 0) {
-				if (verbose >= -1) {
-					syslog(LOG_ERR, "send_rdisc: %s\n", strerror(errno));
-				}
-				freeaddrinfo(addr_info);
-				return -1;
-			}
-		}
-
-		p=p->ai_next;
-	}
-	freeaddrinfo(addr_info);
-
 	return 0;
 }
 
-
-static int fill_prl()
-{
-	int i;
-	/* TODO: remove stale PRL entries */
-	for (i=0; i < MAX_ROUTERS; i++)
-		if (router_name[i])
-			if (add_prl_entry(router_name[i]) < 0)
-				return -1;
-	return 0;
-}
-
+/**
+ * Gets source IPv4 Address of tunnel
+ * Either IP address of interface
+ * or outgoing IPv4 address
+ **/
 static uint32_t get_tunnel_saddr(const char* iface)
 {
-	struct addrinfo *addr_info, *p, hints;
-	int err;
 	uint32_t saddr;
+	struct PRLENTRY* pr;
 
 	if (iface)
 		return get_if_addr(iface);
-	if (router_name[0] == NULL)
-		return 0;
 
+	pr = getFirstPR();
 	saddr = 0;
 
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_protocol=IPPROTO_UDP;
-	err = getaddrinfo(router_name[0], NULL, &hints, &addr_info);
-
-	if (err) {
-		if (verbose >= 2)
-			syslog(LOG_WARNING, "getaddrinfo: %s: %s\n", router_name[0], gai_strerror(err));
-		return 0;
-	}
-	
-	p=addr_info;
-	while (p)
-	{
-		struct sockaddr_in addr;
+	while (pr) {
+		struct sockaddr_in addr, addr2;
 		socklen_t addrlen;
 		int fd = socket (AF_INET, SOCK_DGRAM, 0);
-
+	
 		if (fd < 0)
 			break;
 
-		if (connect (fd, p->ai_addr, p->ai_addrlen) == 0) {
-			addrlen = sizeof(addr);
-			getsockname(fd, (struct sockaddr *)&addr, &addrlen);
-			if (addrlen == sizeof(addr))
-				saddr = addr.sin_addr.s_addr;
+		addr.sin_family = AF_INET;
+		addr.sin_port = 0;
+		addr.sin_addr.s_addr = pr->ip;
+		if (connect (fd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in))== 0) {
+			addrlen = sizeof(addr2);
+			getsockname(fd, (struct sockaddr *)&addr2, &addrlen);
+			if (addrlen == sizeof(addr2)) {
+				if (saddr == 0)
+					saddr = addr2.sin_addr.s_addr;
+				else if (saddr != addr2.sin_addr.s_addr) {
+					syslog(LOG_WARNING,
+						"Different outgoing interfaces for PDR %s. Ignoring.\n",
+						inet_ntoa(addr.sin_addr));
+					pr = delPR(pr);
+					close(fd);
+					continue;
+				}
+			}
+		} else  {
+			syslog(LOG_WARNING, "PDR %s unreachable. Not removing.\n",
+						inet_ntoa(addr.sin_addr));
+// 			pr = delPR(pr);
+// 			close(fd);
+// 			continue;
 		}
 		close (fd);
-
-		p=p->ai_next;
+	
+		pr = pr->next;
 	}
-	freeaddrinfo(addr_info);
+	return saddr;
+}
 
+/**
+ * Wait until get_tunnel_saddr is successful and return source address
+ **/
+static uint32_t wait_for_link()
+{
+	uint32_t saddr;
+	if ((saddr = get_tunnel_saddr(interface_name)) == 0) {
+		if (verbose >= 0) {
+			if (interface_name)
+				syslog(LOG_INFO, "waiting for link %s to become ready...\n", interface_name);
+			else
+				syslog(LOG_INFO, "waiting for router %s to become reachable...\n", router_name->name);
+		}
+
+		do {
+			if (verbose >= 2) {
+				syslog(LOG_DEBUG, "still waiting for link...\n");
+			}
+			sleep(WAIT_FOR_LINK);
+			if (go_down)
+				return 0;
+			saddr = get_tunnel_saddr(interface_name);
+		} while ((go_down == 0) && (saddr == 0));
+
+		if (verbose >= 0) {
+			if (saddr) {
+				if (interface_name)
+					syslog(LOG_INFO, "link %s became ready...\n", interface_name);
+				else
+					syslog(LOG_INFO, "router %s became reachable...\n", router_name->name);
+			}
+		}
+	}
 	return saddr;
 }
 
@@ -434,30 +409,6 @@ static void stop_isatap()
 		syslog(LOG_INFO, "%s deleted\n", tunnel_name);
 }
 
-static void detect_send_rs()
-{
-	struct utsname uts;
-	int x,y,z;
-
-	/* Default in case of error: */
-#ifdef HAVE_IP_TUNNEL_PRL_RS_DELAY
-	send_rs = 0;
-#else
-	send_rs = 1;
-#endif
-
-	if (uname(&uts) < 0)
-		perror("uname");
-	else if (sscanf(uts.release, "%d.%d.%d", &x, &y, &z) < 3) {
-		syslog(LOG_WARNING, "WARNING, unable to get running kernel. got: %s\n", uts.release);
-	} else {
-		/* Disable send_rs, if kernel >= 2.6.31 */
-		if ((x << 16) + (y << 8) + z >= 0x020600 + 31)
-			send_rs = 0;
-		else send_rs = 1;
-	}
-}
-
 static void write_pid_file()
 {
 	struct flock fl;
@@ -487,36 +438,8 @@ static void write_pid_file()
 }
 
 
-static uint32_t wait_for_link()
-{
-	uint32_t saddr;
-	if ((saddr = get_tunnel_saddr(interface_name)) == 0) {
-		if (verbose >= 0) {
-			if (interface_name)
-				syslog(LOG_INFO, "waiting for link %s to become ready...\n", interface_name);
-			else
-				syslog(LOG_INFO, "waiting for router %s to become reachable...\n", router_name[0]);
-		}
 
-		do {
-			if (verbose >= 2) {
-				syslog(LOG_DEBUG, "still waiting for link...\n");
-			}
-			sleep(WAIT_FOR_LINK);
-			saddr = get_tunnel_saddr(interface_name);
-		} while ((go_down == 0) && (saddr == 0));
 
-		if (verbose >= 0) {
-			if (saddr) {
-				if (interface_name)
-					syslog(LOG_INFO, "link %s became ready...\n", interface_name);
-				else
-					syslog(LOG_INFO, "router %s became reachable...\n", router_name[0]);
-			}
-		}
-	}
-	return saddr;
-}
 
 int main(int argc, char **argv)
 {
@@ -542,12 +465,6 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (send_rs == -1)
-		detect_send_rs();
-
-	if (verbose >= 1)
-		syslog(LOG_INFO, "userspace sending RS: %s\n", send_rs ? "on" : "off");
-
 	if (daemonize == 1) {
 		pid_t pid;
 
@@ -568,7 +485,7 @@ int main(int argc, char **argv)
 		saddr = get_tunnel_saddr(interface_name);
 		if (saddr == 0) {
 			if (interface_name == NULL)
-				fprintf(stderr, PACKAGE ": router %s unreachable...\n", router_name[0]);
+				fprintf(stderr, PACKAGE ": router %s unreachable...\n", router_name->name);
 			else
 				perror("get_tunnel_saddr");
 			exit(1);
@@ -576,7 +493,7 @@ int main(int argc, char **argv)
 		saddr = start_isatap(saddr);
 		if (saddr == 0)
 			perror("start_isatap");
-		fill_prl();
+		fillPRL();
 		/* one-shot, exit program when done */
 		exit(0);
 	}
@@ -595,31 +512,51 @@ int main(int argc, char **argv)
 	signal(SIGTERM, sigint_handler);
 	signal(SIGHUP, sighup_handler);
 
-	saddr = 0;
-	while (!go_down)
+
+	fillPRL();
+	saddr = wait_for_link();
+	if (!go_down)
 	{
-		saddr = wait_for_link();
-		if (go_down)
-			break;
-
 		saddr = start_isatap(saddr);
-		fill_prl();
-
-		while (1) {
-			sleep(probe_interval);
+		while (!go_down)
+		{
+			uint32_t saddr_n;
+			child = fork();
+			if (child < 0) {
+				perror("fork:");
+				break;
+			}
+			if (child) {
+				int status;
+				waitpid(child, &status, 0);
+				if (verbose >= 1)
+					syslog(LOG_INFO, "Solicitation Loop exited with status %d\n", status);
+				child = 0;
+			} else {
+				int status;
+				signal(SIGTERM, SIG_DFL);
+				signal(SIGINT, SIG_IGN);
+				signal(SIGHUP, SIG_IGN);
+	
+				status = run_solicitation_loop(tunnel_name);
+				closelog();
+				exit(status);
+			}
+			fillPRL();
+			saddr_n = wait_for_link();
 			if (go_down)
 				break;
-			if ((get_tunnel_saddr(interface_name) != saddr) || (fill_prl() != 0)) {
-				if (verbose >= 0)
-					syslog(LOG_INFO, "link change detected, restarting.\n");
-				saddr = 0;
-				break;
+	
+			if (saddr_n != saddr) {
+				syslog(LOG_WARNING, "Link change detected. Re-creating tunnel.\n");
+				stop_isatap();
+				saddr = start_isatap(saddr_n);
 			}
 		}
 		stop_isatap();
 	}
 
-	if (pid_file) {
+ 	if (pid_file) {
 		if (unlink(pid_file) < 0)
 			syslog(LOG_WARNING, "cannot unlink pid file: %s\n", strerror(errno));
 	}
