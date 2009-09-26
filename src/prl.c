@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <string.h>
 
 #include <netinet/in.h>
 
@@ -35,6 +36,9 @@ struct PRLENTRY* newPR() {
 	n->ip = 0;
 	n->next = NULL;
 	n->interval = 0;
+	n->next_timeout = 0;
+	n->rs_sent = 0;
+	memset(&n->addr6, 0, sizeof(n->addr6));
 
 	return n;
 }
@@ -61,6 +65,16 @@ struct PRLENTRY* findPR(uint32_t ip) {
 	struct PRLENTRY* cur = prl_head;
 	while (cur) {
 		if (cur->ip == ip)
+			return cur;
+		cur = cur->next;
+	}
+	return NULL;
+}
+
+struct PRLENTRY* findPR_by_addr6(struct in6_addr *addr) {
+	struct PRLENTRY* cur = prl_head;
+	while (cur) {
+		if (bcmp(&cur->addr6.sin6_addr, addr, sizeof(struct in6_addr)) == 0) 
 			return cur;
 		cur = cur->next;
 	}

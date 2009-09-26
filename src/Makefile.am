@@ -9,5 +9,6 @@ isatapd_SOURCES = \
 	isatap.c isatap.h \
 	prl.c prl.h \
 	tunnel.c tunnel.h \
-	rdisc.c rdisc.h
+	rdisc.c rdisc.h \
+	rtradv.h rtradv.c 
 

@@ -22,6 +22,7 @@
 #include <errno.h>
 
 #include <sys/socket.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -55,6 +56,7 @@ struct ROUTER_NAME {
 } *router_name = NULL;
 
 static int   rs_interval = 600;
+static int   dns_interval = 3600;
        int   verbose = 0;
 static int   daemonize = 0;
 static char* pid_file = NULL;
@@ -74,7 +76,7 @@ static void sigint_handler(int sig)
 	if (verbose >= 0)
 		syslog(LOG_NOTICE, "signal %d received, going down.\n", sig);
 	if (child)
-		kill(child, SIGTERM);
+		kill(child, SIGHUP);
 	go_down = 1;
 }
 
@@ -83,7 +85,7 @@ static void sighup_handler(int sig)
 	if (verbose >= 0)
 		syslog(LOG_NOTICE, "SIGHUP received.\n");
 	if (child)
-		kill(child, SIGTERM);
+		kill(child, SIGHUP);
 }
 
 
@@ -106,8 +108,11 @@ static void show_help()
 	fprintf(stderr, "       -r --router     set potential router.\n");
 	fprintf(stderr, "                       default: '%s'.\n", DEFAULT_ROUTER_NAME);
 	
-	fprintf(stderr, "       -i --interval   interval to check PRL and perform router solicitation\n");
+	fprintf(stderr, "       -i --interval   interval to perform router solicitation\n");
 	fprintf(stderr, "                       default: %d seconds\n", rs_interval);
+	fprintf(stderr, "          --check-dns  interval to perform DNS resolution and\n");
+	fprintf(stderr, "                       recreate PRL.\n");
+	fprintf(stderr, "                       default: %d seconds\n", dns_interval);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -d --daemon     fork into background\n");
@@ -158,6 +163,7 @@ static void parse_options(int argc, char** argv)
 		{"link", 1, NULL, 'l'},
 		{"router", 1, NULL, 'r'},
 		{"interval", 1, NULL, 'i'},
+		{"check-dns", 1, NULL, 'D'},
 		{"verbose", 0, NULL, 'v'},
 		{"quiet", 0, NULL, 'q'},
 		{"daemon", 0, NULL, 'd'},
@@ -188,6 +194,14 @@ static void parse_options(int argc, char** argv)
 		case 'i': if (optarg) {
 				rs_interval = atoi(optarg);
 				if (rs_interval <= 0) {
+					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
+					show_help();
+				}
+			}
+			break;
+		case 'D': if (optarg) {
+				dns_interval = atoi(optarg);
+				if (dns_interval <= 0) {
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
 					show_help();
 				}
@@ -250,6 +264,7 @@ static void parse_options(int argc, char** argv)
 static int fillPRL()
 {
 	struct ROUTER_NAME* r;
+	
 	flushPRL();
 	r = router_name;
 	while (r) {
@@ -305,9 +320,9 @@ static uint32_t get_tunnel_saddr(const char* iface)
 		} else  {
 			syslog(LOG_WARNING, "PDR %s unreachable. Not removing.\n",
 						inet_ntoa(addr.sin_addr));
-// 			pr = delPR(pr);
-// 			close(fd);
-// 			continue;
+/* 			pr = delPR(pr);
+			close(fd);
+			continue; */
 		}
 		close (fd);
 	
@@ -517,6 +532,7 @@ int main(int argc, char **argv)
 	saddr = wait_for_link();
 	if (!go_down)
 	{
+		int status;
 		saddr = start_isatap(saddr);
 		while (!go_down)
 		{
@@ -527,27 +543,27 @@ int main(int argc, char **argv)
 				break;
 			}
 			if (child) {
-				int status;
 				waitpid(child, &status, 0);
+				if (WIFEXITED(status))
+					status = WEXITSTATUS(status);
 				if (verbose >= 1)
 					syslog(LOG_INFO, "Solicitation Loop exited with status %d\n", status);
 				child = 0;
 			} else {
 				int status;
-				signal(SIGTERM, SIG_DFL);
-				signal(SIGINT, SIG_IGN);
-				signal(SIGHUP, SIG_IGN);
-	
-				status = run_solicitation_loop(tunnel_name);
+				status = run_solicitation_loop(tunnel_name, dns_interval * 1000);
 				closelog();
 				exit(status);
 			}
-			fillPRL();
+			if (go_down)
+				break;
+			if (status == EXIT_CHECK_PRL)
+				fillPRL();
 			saddr_n = wait_for_link();
 			if (go_down)
 				break;
 	
-			if (saddr_n != saddr) {
+			if (saddr_n != saddr || status == EXIT_ERROR_LAYER2) {
 				syslog(LOG_WARNING, "Link change detected. Re-creating tunnel.\n");
 				stop_isatap();
 				saddr = start_isatap(saddr_n);
