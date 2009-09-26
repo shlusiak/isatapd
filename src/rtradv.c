@@ -65,7 +65,7 @@ recvfromLL (int fd, void *buf, size_t len, int flags,
 			{
 				/* pretend to be a spurious wake-up */
 				errno = EAGAIN;
-				return -1;
+				return 0;
 			}
 		}
 	}
@@ -232,6 +232,8 @@ ssize_t recvadv(int fd, int ifindex)
 
         val = recvfromLL (fd, buf, sizeof (buf),
                                 MSG_WAITALL, &addr);
+        if (val == 0)
+    		return 0;
 	if (val == -1)
 	{
                 if (errno == EINTR)
