@@ -144,7 +144,7 @@ static void show_version()
 /**
  * Adds a router name to the linked list of router names
  **/
-static void add_router_name(const char* name)
+static void add_router_to_name_list(const char* name)
 {
 	struct ROUTER_NAME *n;
 	n = (struct ROUTER_NAME*)malloc(sizeof(struct ROUTER_NAME));
@@ -189,7 +189,7 @@ static void parse_options(int argc, char** argv)
 				interface_name = strdup(optarg);
 			break;
 		case 'r': if (optarg)
-				add_router_name(optarg);
+				add_router_to_name_list(optarg);
 			break;
 		case 'i': if (optarg) {
 				rs_interval = atoi(optarg);
@@ -249,9 +249,9 @@ static void parse_options(int argc, char** argv)
 	}
 
 	for (; optind < argc; optind++)
-		add_router_name(argv[optind]);
+		add_router_to_name_list(argv[optind]);
 	if (router_name == NULL)
-		add_router_name(DEFAULT_ROUTER_NAME);
+		add_router_to_name_list(DEFAULT_ROUTER_NAME);
 }
 
 
@@ -261,17 +261,18 @@ static void parse_options(int argc, char** argv)
  * Fills the linked list of PRL entries with IPs
  * derived from router names (DNS)
  **/
-static int fillPRL()
+static int fill_internal_prl()
 {
 	struct ROUTER_NAME* r;
 	
-	flushPRL();
+	flush_internal_prl();
 	r = router_name;
 	while (r) {
-		if (add_router_name_to_prl(r->name, rs_interval) < 0)
+		if (add_router_name_to_internal_prl(r->name, rs_interval) < 0)
 			return -1;
 		r = r->next;
 	}
+	prune_kernel_prl(tunnel_name);
 	return 0;
 }
 
@@ -288,7 +289,7 @@ static uint32_t get_tunnel_saddr(const char* iface)
 	if (iface)
 		return get_if_addr(iface);
 
-	pr = getFirstPR();
+	pr = get_first_internal_pdr();
 	saddr = 0;
 
 	while (pr) {
@@ -310,9 +311,9 @@ static uint32_t get_tunnel_saddr(const char* iface)
 					saddr = addr2.sin_addr.s_addr;
 				else if (saddr != addr2.sin_addr.s_addr) {
 					syslog(LOG_WARNING,
-						"Different outgoing interfaces for PDR %s. Ignoring.\n",
+						"Different outgoing interfaces for PDR %s. Removing from internal PRL.\n",
 						inet_ntoa(addr.sin_addr));
-					pr = delPR(pr);
+					pr = del_internal_pdr(pr);
 					close(fd);
 					continue;
 				}
@@ -508,7 +509,7 @@ int main(int argc, char **argv)
 		saddr = start_isatap(saddr);
 		if (saddr == 0)
 			perror("start_isatap");
-		fillPRL();
+		fill_internal_prl();
 		/* one-shot, exit program when done */
 		exit(0);
 	}
@@ -528,7 +529,7 @@ int main(int argc, char **argv)
 	signal(SIGHUP, sighup_handler);
 
 
-	fillPRL();
+	fill_internal_prl();
 	saddr = wait_for_link();
 	if (!go_down)
 	{
@@ -558,7 +559,7 @@ int main(int argc, char **argv)
 			if (go_down)
 				break;
 			if (status == EXIT_CHECK_PRL)
-				fillPRL();
+				fill_internal_prl();
 			saddr_n = wait_for_link();
 			if (go_down)
 				break;

@@ -196,6 +196,62 @@ int tunnel_add_prl(const char *dev, uint32_t addr, int default_rtr)
 	return 0;
 }
 
+int tunnel_del_prl(const char *dev, uint32_t addr)
+{
+	struct ip_tunnel_prl p;
+	struct ifreq ifr;
+	int fd;
+
+	memset(&p, 0, sizeof(p));
+	p.addr = addr;
+
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+	ifr.ifr_ifru.ifru_data = (void*)&p;
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return -1;
+	
+	if (ioctl(fd, SIOCDELPRL, &ifr)) {
+		close(fd);
+		return -1;
+	}
+	close(fd);
+	return 0;
+}
+
+int tunnel_get_prl(const char *dev, uint32_t *addr, int num)
+{
+	struct ifreq ifr;
+	struct ip_tunnel_prl *p;
+	int i;
+	int fd;
+	
+	p = (struct ip_tunnel_prl*)malloc(sizeof(struct ip_tunnel_prl) * ( num + 2 ));
+	if (p == 0)
+		return -1;
+	p->addr = htonl(INADDR_ANY);
+	p->datalen = (num) * sizeof(struct ip_tunnel_prl);
+
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+	ifr.ifr_ifru.ifru_data = (void*)p;
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return -1;
+	
+	if (ioctl(fd, SIOCGETPRL, &ifr)) {
+		close(fd);
+		return -1;
+	}
+	close(fd);
+	
+	for (i=0; i < p->datalen/sizeof(struct ip_tunnel_prl) && i < num; i++) {
+		addr[i] = p[i+1].addr;
+	}
+	
+	return i;
+}
+
+
 int tunnel_set_mtu(const char *dev, int mtu)
 {
 	struct ifreq ifr;

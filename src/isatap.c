@@ -122,7 +122,7 @@ static int solicitate_router(int fd, char* tunnel_name, struct sockaddr_in6 *add
  * Resolves one router name and appends found IPv4 Addresses
  * to internal PRL
  **/
-int add_router_name_to_prl(const char* host, int interval)
+int add_router_name_to_internal_prl(const char* host, int interval)
 {
 	struct addrinfo *addr_info, *p, hints;
 	int err;
@@ -149,10 +149,10 @@ int add_router_name_to_prl(const char* host, int interval)
 		struct PRLENTRY* pr;
 
 		addr = ((struct sockaddr_in*)(p->ai_addr))->sin_addr;
-		if (!findPR(addr.s_addr)) {
+		if (!find_internal_pdr_by_addr(addr.s_addr)) {
 			if (verbose >= 1)
-				syslog(LOG_INFO, "Adding PDR %s\n", inet_ntoa(addr));
-			pr=newPR();
+				syslog(LOG_INFO, "Adding internal PDR %s\n", inet_ntoa(addr));
+			pr=new_internal_pdr();
 			pr->ip = addr.s_addr;
 			pr->interval = interval;
 			pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
@@ -162,16 +162,35 @@ int add_router_name_to_prl(const char* host, int interval)
 			if (ipv4_is_private(addr.s_addr))
 				pr->addr6.sin6_addr.s6_addr32[2] ^= htonl(0x02000000);
 
-			addPR(pr);
+			add_internal_pdr(pr);
 		} else {
 			if (verbose >=1)
-				syslog(LOG_INFO, "Ignoring duplicate PDR %s\n", inet_ntoa(addr));
+				syslog(LOG_INFO, "Ignoring duplicate internal PDR %s\n", inet_ntoa(addr));
 		}
 
 		p=p->ai_next;
 	}
 	freeaddrinfo(addr_info);
 
+	return 0;
+}
+
+int prune_kernel_prl(const char *dev) {
+	uint32_t addr[5];
+	int num;
+	
+	num = tunnel_get_prl(dev, addr, sizeof(addr)/sizeof(addr[0]));
+	if (num < 0)
+		return -1;
+	
+	while (--num >= 0) {
+		if (find_internal_pdr_by_addr(addr[num]) == NULL) {
+			struct in_addr ia = {addr[num]};
+			syslog(LOG_INFO, "Removing old PDR %s from kernel\n", inet_ntoa(ia));
+			tunnel_del_prl(dev, addr[num]);
+		}
+	}
+  
 	return 0;
 }
 
@@ -193,7 +212,7 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 		return EXIT_ERROR_FATAL;
 	}
 
-	pr = getFirstPR();
+	pr = get_first_internal_pdr();
 	if (pr == NULL)
 		return EXIT_ERROR_FATAL;
 	
@@ -202,6 +221,9 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 			/* hopefully not fatal. could be EEXIST */
 			if (verbose >= 2 && errno != EEXIST)
 				syslog(LOG_ERR, "tunnel_add_prl: %s\n", strerror(errno));
+		} else if (verbose >= 2) {
+			struct in_addr ia = {pr->ip};
+			syslog(LOG_INFO, "Adding PDR %s to kernel\n", inet_ntoa(ia));
 		}
 		pr->next_timeout = (int)(1000.0 *
 		    (double)rand() *
@@ -228,7 +250,7 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 		struct timeval timeout;
 		int r, next_timeout;
 		
-		pr = getFirstPR();
+		pr = get_first_internal_pdr();
 		next_timeout = check_prl_timeout;
 		while (pr) {
 			if (pr->next_timeout < next_timeout)
@@ -255,7 +277,7 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 			}
 		}
 		check_prl_timeout -= next_timeout;
-		pr = getFirstPR();
+		pr = get_first_internal_pdr();
 		while (pr) {
 			pr->next_timeout -= next_timeout;
 			if (pr->next_timeout <= 0) {
@@ -274,5 +296,4 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 	close(fd);
 	return EXIT_CHECK_PRL;
 }
-
 

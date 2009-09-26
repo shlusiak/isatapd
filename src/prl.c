@@ -19,17 +19,17 @@
 
 static struct PRLENTRY* prl_head = NULL;
 
-void flushPRL() {
+void flush_internal_prl() {
 	while (prl_head)
-		delPR(prl_head);
+		del_internal_pdr(prl_head);
 }
 
-void addPR(struct PRLENTRY* pr) {
+void add_internal_pdr(struct PRLENTRY* pr) {
 	pr->next = prl_head;
 	prl_head = pr;
 }
 
-struct PRLENTRY* newPR() {
+struct PRLENTRY* new_internal_pdr() {
 	struct PRLENTRY* n;
 	n = (struct PRLENTRY*)malloc(sizeof(struct PRLENTRY));
 
@@ -43,7 +43,7 @@ struct PRLENTRY* newPR() {
 	return n;
 }
 
-struct PRLENTRY* delPR(struct PRLENTRY* pr) {
+struct PRLENTRY* del_internal_pdr(struct PRLENTRY* pr) {
 	struct PRLENTRY* prev = prl_head;
 	if (pr == prl_head) {
 		prl_head = pr->next;
@@ -61,7 +61,7 @@ struct PRLENTRY* delPR(struct PRLENTRY* pr) {
 	return NULL;
 }
 
-struct PRLENTRY* findPR(uint32_t ip) {
+struct PRLENTRY* find_internal_pdr_by_addr(uint32_t ip) {
 	struct PRLENTRY* cur = prl_head;
 	while (cur) {
 		if (cur->ip == ip)
@@ -71,7 +71,7 @@ struct PRLENTRY* findPR(uint32_t ip) {
 	return NULL;
 }
 
-struct PRLENTRY* findPR_by_addr6(struct in6_addr *addr) {
+struct PRLENTRY* find_internal_pdr_by_addr6(struct in6_addr *addr) {
 	struct PRLENTRY* cur = prl_head;
 	while (cur) {
 		if (bcmp(&cur->addr6.sin6_addr, addr, sizeof(struct in6_addr)) == 0) 
@@ -81,7 +81,7 @@ struct PRLENTRY* findPR_by_addr6(struct in6_addr *addr) {
 	return NULL;
 }
 
-struct PRLENTRY* getFirstPR() {
+struct PRLENTRY* get_first_internal_pdr() {
 	return prl_head;
 }
 

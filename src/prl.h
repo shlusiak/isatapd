@@ -12,12 +12,12 @@ struct PRLENTRY {
 };
 
 
-void flushPRL();
-void addPR(struct PRLENTRY* pr);
-struct PRLENTRY* newPR();
-struct PRLENTRY* delPR(struct PRLENTRY* pr);
-struct PRLENTRY* findPR(uint32_t ip);
-struct PRLENTRY* findPR_by_addr6(struct in6_addr *addr);
-struct PRLENTRY* getFirstPR();
+void flush_internal_prl();
+void add_internal_pdr(struct PRLENTRY* pr);
+struct PRLENTRY* new_internal_pdr();
+struct PRLENTRY* del_internal_pdr(struct PRLENTRY* pr);
+struct PRLENTRY* find_internal_pdr_by_addr(uint32_t ip);
+struct PRLENTRY* find_internal_pdr_by_addr6(struct in6_addr *addr);
+struct PRLENTRY* get_first_internal_pdr();
 
 #endif

@@ -13,7 +13,8 @@
 #define EXIT_ERROR_FATAL (102)
 
 
-int add_router_name_to_prl(const char* host, int interval);
+int add_router_name_to_internal_prl(const char* host, int interval);
+int prune_kernel_prl(const char* dev);
 int run_solicitation_loop(char* tunnel_name, int check_prl_timeout);
 
 

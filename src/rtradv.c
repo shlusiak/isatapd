@@ -250,7 +250,7 @@ ssize_t recvadv(int fd, int ifindex)
 			syslog(LOG_INFO, "Ignoring Advertisement from %s (scope mismatch)", str);
 		return val;
 	}
-	pr = findPR_by_addr6(&addr.sin6_addr);
+	pr = find_internal_pdr_by_addr6(&addr.sin6_addr);
 	if (pr) {
 		if (parseadv(buf, val, pr) < 0)
 			return 0;
