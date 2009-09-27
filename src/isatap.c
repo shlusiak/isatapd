@@ -152,12 +152,26 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 		if (!find_internal_pdr_by_addr(addr.s_addr)) {
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Adding internal PDR %s\n", inet_ntoa(addr));
+			/* Add RFC conform address */
 			pr=new_internal_pdr();
 			pr->ip = addr.s_addr;
 			pr->interval = interval;
 			pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
 			pr->addr6.sin6_addr.s6_addr32[1] = htonl(0x00000000);
 			pr->addr6.sin6_addr.s6_addr32[2] = htonl(0x02005efe);
+			pr->addr6.sin6_addr.s6_addr32[3] = addr.s_addr;
+			if (ipv4_is_private(addr.s_addr))
+				pr->addr6.sin6_addr.s6_addr32[2] ^= htonl(0x02000000);
+
+			add_internal_pdr(pr);
+			
+			/* Add NOT-RFC conform address as well */
+			pr=new_internal_pdr();
+			pr->ip = addr.s_addr;
+			pr->interval = interval;
+			pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
+			pr->addr6.sin6_addr.s6_addr32[1] = htonl(0x00000000);
+			pr->addr6.sin6_addr.s6_addr32[2] = htonl(0x00005efe);
 			pr->addr6.sin6_addr.s6_addr32[3] = addr.s_addr;
 			if (ipv4_is_private(addr.s_addr))
 				pr->addr6.sin6_addr.s6_addr32[2] ^= htonl(0x02000000);
