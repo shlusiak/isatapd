@@ -41,15 +41,11 @@
 #include "isatap.h"
 
 
-#define DEFAULT_ROUTER_NAME "isatap"
-#define WAIT_FOR_LINK (15)  /* seconds between polling, if link is down */
-
-
 static char* tunnel_name = NULL;
 static char* interface_name = NULL;
 
 
-struct ROUTER_NAME {
+static struct ROUTER_NAME {
 	char* name;
 	struct ROUTER_NAME* next;
 } *router_name = NULL;
@@ -88,6 +84,18 @@ static void sighup_handler(int sig)
 }
 
 
+/**
+ * Adds a router name to the linked list of router names
+ **/
+static void add_router_to_name_list(const char* name)
+{
+	struct ROUTER_NAME *n;
+	n = (struct ROUTER_NAME*)malloc(sizeof(struct ROUTER_NAME));
+	n->next = router_name;
+	router_name = n;
+	n->name = strdup(name);
+}
+
 
 static void show_help()
 {
@@ -116,7 +124,6 @@ static void show_help()
 
 	fprintf(stderr, "       -d --daemon     fork into background\n");
 	fprintf(stderr, "       -p --pid        store pid of daemon in file\n");
-	fprintf(stderr, "       -1 --one-shot   only set up tunnel and PRL, then exit\n");
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -v --verbose    increase verbosity\n");
@@ -140,18 +147,6 @@ static void show_version()
 	exit(0);
 }
 
-/**
- * Adds a router name to the linked list of router names
- **/
-static void add_router_to_name_list(const char* name)
-{
-	struct ROUTER_NAME *n;
-	n = (struct ROUTER_NAME*)malloc(sizeof(struct ROUTER_NAME));
-	n->next = router_name;
-	router_name = n;
-	n->name = strdup(name);
-}
-
 static void parse_options(int argc, char** argv)
 {
 	int c;
@@ -166,7 +161,6 @@ static void parse_options(int argc, char** argv)
 		{"verbose", 0, NULL, 'v'},
 		{"quiet", 0, NULL, 'q'},
 		{"daemon", 0, NULL, 'd'},
-		{"one-shot", 0, NULL, '1'},
 		{"version", 0, NULL, 'V'},
 		{"mtu", 1, NULL, 'm'},
 		{"pid", 1, NULL, 'p'},
@@ -214,8 +208,7 @@ static void parse_options(int argc, char** argv)
 			break;
 		case 'p': pid_file = strdup(optarg);
 			break;
-		case '1': daemonize = 2;
-			break;
+
 		case 'm': mtu = atoi(optarg);
 			if (mtu <= 0) {
 				syslog(LOG_ERR, "invalid mtu -- %s\n", optarg);
@@ -271,7 +264,6 @@ static int fill_internal_prl()
 			return -1;
 		r = r->next;
 	}
-	prune_kernel_prl(tunnel_name);
 	return 0;
 }
 
@@ -296,8 +288,10 @@ static uint32_t get_tunnel_saddr(const char* iface)
 		socklen_t addrlen;
 		int fd = socket (AF_INET, SOCK_DGRAM, 0);
 	
-		if (fd < 0)
+		if (fd < 0) {
+			perror("socket");
 			break;
+		}
 
 		addr.sin_family = AF_INET;
 		addr.sin_port = 0;
@@ -318,11 +312,8 @@ static uint32_t get_tunnel_saddr(const char* iface)
 				}
 			}
 		} else  {
-			syslog(LOG_WARNING, "PDR %s unreachable. Not removing.\n",
+			syslog(LOG_WARNING, "PDR %s unreachable. Probing again next time.\n",
 						inet_ntoa(addr.sin_addr));
-/* 			pr = delPR(pr);
-			close(fd);
-			continue; */
 		}
 		close (fd);
 	
@@ -368,7 +359,12 @@ static uint32_t wait_for_link()
 }
 
 
-static uint32_t start_isatap(uint32_t saddr)
+/**
+ * Creates isatap tunnel for saddr
+ * Sets parameters
+ * Brings tunnel UP
+ **/
+static void create_isatap_tunnel(uint32_t saddr)
 {
 	if (saddr == 0) {
 		if (verbose >= -1)
@@ -405,11 +401,13 @@ static uint32_t start_isatap(uint32_t saddr)
 	}
 	if (verbose >= 0)
 		syslog(LOG_NOTICE, "interface %s up\n", tunnel_name);
-
-	return saddr;
 }
 
-static void stop_isatap()
+/**
+ * Takes tunnel down
+ * Deletes tunnel interface
+ **/
+static void delete_isatap_tunnel()
 {
 	if (tunnel_down(tunnel_name) < 0) {
 		if (verbose >= -1)
@@ -459,6 +457,7 @@ static void write_pid_file()
 int main(int argc, char **argv)
 {
 	uint32_t saddr;
+	int status;
 
 	openlog(NULL, LOG_PID | LOG_PERROR, syslog_facility);
 	parse_options(argc, argv);
@@ -496,22 +495,6 @@ int main(int argc, char **argv)
 		}
 		/* Client */
 	}
-	if (daemonize == 2) {
-		saddr = get_tunnel_saddr(interface_name);
-		if (saddr == 0) {
-			if (interface_name == NULL)
-				fprintf(stderr, PACKAGE ": router %s unreachable...\n", router_name->name);
-			else
-				perror("get_tunnel_saddr");
-			exit(1);
-		}
-		saddr = start_isatap(saddr);
-		if (saddr == 0)
-			perror("start_isatap");
-		fill_internal_prl();
-		/* one-shot, exit program when done */
-		exit(0);
-	}
 	
 	if (pid_file != NULL)
 		write_pid_file();
@@ -528,49 +511,81 @@ int main(int argc, char **argv)
 	signal(SIGHUP, sighup_handler);
 
 
-	fill_internal_prl();
+begin:
+	/* Fill internal PRL and make sure we have at least one IP in it */
+	do {
+		fill_internal_prl();
+		if (get_first_internal_pdr() == NULL) {
+			if (verbose >= 0)
+				syslog(LOG_INFO, "Internal PRL empty! Rechecking in %d sec.\n", WAIT_FOR_LINK);
+			sleep(WAIT_FOR_LINK);
+		}
+	}while (get_first_internal_pdr() == NULL && !go_down);
+	if (go_down)
+		goto end;
+
+	/* Wait till we find an outgoing interface for the first entry in the PRL */
 	saddr = wait_for_link();
-	if (!go_down)
+	create_isatap_tunnel(saddr);
+
+	while (!go_down)
 	{
-		int status;
-		saddr = start_isatap(saddr);
-		while (!go_down)
-		{
-			uint32_t saddr_n;
-			child = fork();
-			if (child < 0) {
-				perror("fork:");
-				break;
-			}
-			if (child) {
-				waitpid(child, &status, 0);
-				if (WIFEXITED(status))
-					status = WEXITSTATUS(status);
-				if (verbose >= 1)
-					syslog(LOG_INFO, "Solicitation Loop exited with status %d\n", status);
-				child = 0;
-			} else {
-				int status;
-				status = run_solicitation_loop(tunnel_name, dns_interval * 1000);
-				closelog();
-				exit(status);
-			}
-			if (go_down)
-				break;
-			if (status == EXIT_CHECK_PRL)
-				fill_internal_prl();
-			saddr_n = wait_for_link();
-			if (go_down)
-				break;
-	
-			if (saddr_n != saddr || status == EXIT_ERROR_LAYER2) {
-				syslog(LOG_WARNING, "Link change detected. Re-creating tunnel.\n");
-				stop_isatap();
-				saddr = start_isatap(saddr_n);
+		uint32_t saddr_n;
+
+		child = fork();
+		if (child < 0) {
+			perror("fork:");
+			break;
+		}
+		if (child) {
+			/* Parent */
+			waitpid(child, &status, 0);
+			if (WIFEXITED(status))
+				status = WEXITSTATUS(status);
+			if (verbose >= 2)
+				syslog(LOG_INFO, "Solicitation Loop exited with status %d\n", status);
+			child = 0;
+			/* Parent */
+		} else {
+			/* Child */
+			int status;
+			status = run_solicitation_loop(tunnel_name, dns_interval * 1000);
+			closelog();
+			exit(status);
+			/* Child */
+		}
+		/* Parent */
+		if (go_down)
+			break;
+
+		if (status == EXIT_CHECK_PRL) {
+			/* Child requested to recheck PRL withou taking the tunnel down */
+			if (verbose >= 1)
+				syslog(LOG_INFO, "Rechecking DNS entries for PRL\n");
+			fill_internal_prl();
+			prune_kernel_prl(tunnel_name);
+			if (get_first_internal_pdr() == NULL) {
+				/* If PRL suddenly is empty, restart from the beginning */
+				delete_isatap_tunnel();
+				goto begin;
 			}
 		}
-		stop_isatap();
+
+		/* Try to detect link */
+		saddr_n = wait_for_link();
+		if (go_down)
+			break;
+
+		if (saddr_n != saddr || status == EXIT_ERROR_LAYER2) {
+			syslog(LOG_WARNING, "Link change detected. Re-creating tunnel.\n");
+			delete_isatap_tunnel();
+			saddr = saddr_n;
+			create_isatap_tunnel(saddr);
+		}
 	}
+	delete_isatap_tunnel();
+
+end:
 
  	if (pid_file) {
 		if (unlink(pid_file) < 0)

@@ -141,7 +141,7 @@ static int ipv4_is_private(uint32_t addr) {
 	case 192:
 		switch (b8[1]) {
 		case 0:
-			if ((b8[2] == 0)||(b8[2] == 2))
+			if ((b8[2] == 0) || (b8[2] == 2))
 				return 1;
 			break;
 		case 88:
@@ -174,9 +174,8 @@ static int ipv4_is_private(uint32_t addr) {
  * Sends out one ISATAP-RS to a specified IPv4 address
  **/
 static int solicitate_router(int fd, char* tunnel_name, struct sockaddr_in6 *addr6) {
-	static char addrstr[INET6_ADDRSTRLEN];
-
 	if (verbose >= 2) {
+		static char addrstr[INET6_ADDRSTRLEN];
 		syslog(LOG_INFO, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6->sin6_addr, addrstr, sizeof(addrstr)));
 	}
 	if (send_rdisc(fd, tunnel_name, &addr6->sin6_addr) < 0) {
@@ -207,7 +206,7 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 
 	if (err) {
 		if (verbose >= 0)
-			syslog(LOG_WARNING, "add_prl_entry: %s: %s\n", host, gai_strerror(err));
+			syslog(LOG_WARNING, "add_router_name_to_internal_prl: %s: %s\n", host, gai_strerror(err));
 		/* host not found is not fatal */
 		return 0;
 	}
@@ -222,20 +221,7 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 		if (!find_internal_pdr_by_addr(addr.s_addr)) {
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Adding internal PDR %s\n", inet_ntoa(addr));
-			/* Add RFC conform address */
-			pr=new_internal_pdr();
-			pr->ip = addr.s_addr;
-			pr->interval = interval;
-			pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
-			pr->addr6.sin6_addr.s6_addr32[1] = htonl(0x00000000);
-			pr->addr6.sin6_addr.s6_addr32[2] = htonl(0x02005efe);
-			pr->addr6.sin6_addr.s6_addr32[3] = addr.s_addr;
-			if (ipv4_is_private(addr.s_addr))
-				pr->addr6.sin6_addr.s6_addr32[2] ^= htonl(0x02000000);
-
-			add_internal_pdr(pr);
-			
-			/* Add NOT-RFC conform address as well */
+			/* Add local address (not always RFC conform) */
 			pr=new_internal_pdr();
 			pr->ip = addr.s_addr;
 			pr->interval = interval;
@@ -243,10 +229,21 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 			pr->addr6.sin6_addr.s6_addr32[1] = htonl(0x00000000);
 			pr->addr6.sin6_addr.s6_addr32[2] = htonl(0x00005efe);
 			pr->addr6.sin6_addr.s6_addr32[3] = addr.s_addr;
-			if (ipv4_is_private(addr.s_addr))
-				pr->addr6.sin6_addr.s6_addr32[2] ^= htonl(0x02000000);
-
+			
 			add_internal_pdr(pr);
+			
+			/* Add RFC conform address as well, if saddr is public */
+			if (!ipv4_is_private(addr.s_addr)) {
+				pr=new_internal_pdr();
+				pr->ip = addr.s_addr;
+				pr->interval = interval;
+				pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
+				pr->addr6.sin6_addr.s6_addr32[1] = htonl(0x00000000);
+				pr->addr6.sin6_addr.s6_addr32[2] = htonl(0x02005efe);
+				pr->addr6.sin6_addr.s6_addr32[3] = addr.s_addr;
+
+				add_internal_pdr(pr);
+			}
 		} else {
 			if (verbose >=1)
 				syslog(LOG_INFO, "Ignoring duplicate internal PDR %s\n", inet_ntoa(addr));
@@ -271,7 +268,8 @@ int prune_kernel_prl(const char *dev) {
 		if (find_internal_pdr_by_addr(addr[num]) == NULL) {
 			struct in_addr ia;
 			ia.s_addr = addr[num];
-			syslog(LOG_INFO, "Removing old PDR %s from kernel\n", inet_ntoa(ia));
+			if (verbose >= 1)
+				syslog(LOG_INFO, "Removing old PDR %s from kernel\n", inet_ntoa(ia));
 			tunnel_del_prl(dev, addr[num]);
 		}
 	}

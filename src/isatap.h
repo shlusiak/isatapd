@@ -2,10 +2,12 @@
 #define _ISATAP_H_INCLUDED_
 
 
+#define   DEFAULT_ROUTER_NAME                 "isatap"
 #define   MAX_RTR_SOLICITATION_DELAY          1 /*secs*/
 #define   RTR_SOLICITATION_INTERVAL           4 /*secs*/
 #define   MAX_RTR_SOLICITATIONS               3 /*transmissions*/
 #define   DEFAULT_MINROUTERSOLICITINTERVAL  120 /*secs*/
+#define   WAIT_FOR_LINK                      10 /* seconds between polling, if link is down */
 
 
 #define EXIT_ERROR_LAYER2 (100)
