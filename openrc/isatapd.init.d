@@ -6,7 +6,7 @@ PID=/var/run/isatapd.pid
 opts="reload"
 
 depend() {
-	need net localmount
+	need net
 	after bootmisc
 	use dns logger
 }
@@ -16,14 +16,6 @@ start() {
 	[ -n "${ISATAP_NAME}" ] && DAEMON_OPTS="${DAEMON_OPTS} --name ${ISATAP_NAME} "
 	[ -n "${ISATAP_LINK}" ] && DAEMON_OPTS="${DAEMON_OPTS} --link ${ISATAP_LINK} "
 	[ -n "${MTU}" ] && DAEMON_OPTS="${DAEMON_OPTS} --mtu ${MTU} "
-
-	if [ -n "${ISATAP_USER_RS}" ]; then
-		if yesno ${ISATAP_USER_RS}; then
-			DAEMON_OPTS="${DAEMON_OPTS} --user-rs "
-		else
-			DAEMON_OPTS="${DAEMON_OPTS} --no-user-rs "
-		fi
-	fi
 
 	ebegin "Starting ${SVCNAME}"
 	start-stop-daemon --start --exec ${ISATAPD} -- \

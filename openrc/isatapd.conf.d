@@ -17,10 +17,6 @@
 # Default is 'is0' if ISATAP_LINK is unset and 'is_${ISATAP_LINK}' otherwise.
 #ISATAP_NAME="is0"
 
-# Send router solicitations from userspace. This is not needed for
-# Linux >= 2.6.31. Set to "yes" or "no" to force, default is auto.
-#ISATAP_USER_RS="yes"
-
 # IPv6 MTU of the created ISATAP tunnel interface. The IPv4 path to
 # the ISATAP router and all other ISATAP clients should be able to
 # handle at least MTU+20 bytes. 
