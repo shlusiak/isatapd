@@ -10,14 +10,6 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS([net/if.h netdb.h arpa/inet.h netinet/ip.h netinet/icmp6.h linux/socket.h sys/utsname.h])
 AC_CHECK_HEADERS([getopt.h])
 
-AC_CHECK_MEMBER([struct ip_tunnel_prl.rs_delay], AC_DEFINE(HAVE_IP_TUNNEL_PRL_RS_DELAY,1,[define if you have rs_delay in struct ip_tunnel_prl]), [], [[
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/ip.h>
-#include <net/if.h>
-#include <linux/if_tunnel.h>
-]])
-
 AC_TYPE_PID_T
 AC_FUNC_MALLOC
 
