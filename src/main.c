@@ -1,5 +1,5 @@
 /*
- * isatapd.c    main
+ * main.c       main
  *
  *              This program is free software; you can redistribute it and/or
  *              modify it under the terms of the GNU General Public License
@@ -51,7 +51,7 @@ static struct ROUTER_NAME {
 } *router_name = NULL;
 
 static int   rs_interval = 600;
-static int   dns_interval = 3600;
+static int   dns_interval = DEFAULT_PRLREFRESHINTERVAL;
        int   verbose = 0;
 static int   daemonize = 0;
 static char* pid_file = NULL;
@@ -119,7 +119,7 @@ static void show_help()
 	fprintf(stderr, "                       default: %d seconds\n", rs_interval);
 	fprintf(stderr, "          --check-dns  interval to perform DNS resolution and\n");
 	fprintf(stderr, "                       recreate PRL.\n");
-	fprintf(stderr, "                       default: %d seconds\n", dns_interval);
+	fprintf(stderr, "                       default: %d seconds\n", DEFAULT_PRLREFRESHINTERVAL);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -d --daemon     fork into background\n");
@@ -252,6 +252,7 @@ static void parse_options(int argc, char** argv)
 /**
  * Fills the linked list of PRL entries with IPs
  * derived from router names (DNS)
+ * Return 0 when success
  **/
 static int fill_internal_prl()
 {
@@ -264,7 +265,9 @@ static int fill_internal_prl()
 			return -1;
 		r = r->next;
 	}
-	return 0;
+	if (get_first_internal_pdr())
+		return 0; 
+	return -1;
 }
 
 /**
@@ -513,16 +516,13 @@ int main(int argc, char **argv)
 
 begin:
 	/* Fill internal PRL and make sure we have at least one IP in it */
-	do {
-		fill_internal_prl();
-		if (get_first_internal_pdr() == NULL) {
-			if (verbose >= 0)
-				syslog(LOG_INFO, "Internal PRL empty! Rechecking in %d sec.\n", WAIT_FOR_LINK);
-			sleep(WAIT_FOR_LINK);
-		}
-	}while (get_first_internal_pdr() == NULL && !go_down);
-	if (go_down)
-		goto end;
+	while (fill_internal_prl() < 0) {
+		if (verbose >= 0)
+			syslog(LOG_INFO, "Internal PRL empty! Rechecking in %d sec.\n", WAIT_FOR_PRL);
+		sleep(WAIT_FOR_PRL);
+		if (go_down)
+			goto end;
+	}
 
 	/* Wait till we find an outgoing interface for the first entry in the PRL */
 	saddr = wait_for_link();
@@ -563,12 +563,16 @@ begin:
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Rechecking DNS entries for PRL\n");
 			fill_internal_prl();
-			prune_kernel_prl(tunnel_name);
-			if (get_first_internal_pdr() == NULL) {
+			if (fill_internal_prl() < 0) {
 				/* If PRL suddenly is empty, restart from the beginning */
 				delete_isatap_tunnel();
 				goto begin;
 			}
+			prune_kernel_prl(tunnel_name);
+		}
+		if (status == EXIT_ERROR_FATAL) {
+			syslog(LOG_ERR, "Child exited with ERROR_FATAL\n");
+			break;
 		}
 
 		/* Try to detect link */

@@ -1,3 +1,17 @@
+/*
+ * isatap.c     Loop over router solicitations, handle PRL
+ *
+ *              This program is free software; you can redistribute it and/or
+ *              modify it under the terms of the GNU General Public License
+ *              as published by the Free Software Foundation; either version
+ *              2 of the License, or (at your option) any later version.
+ *
+ * Authors:     Sascha Hlusiak, <mail@saschahlusiak.de>
+ *              Kwong-Sang Yin, <kwong-sang.yin@boeing.com>
+ *              Fred Templin,   <fred.l.templin@boeing.com>
+ *
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -10,15 +24,10 @@
 #include <sys/time.h>
 #include <time.h>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <net/if.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <sys/utsname.h>
 
-#define _GNU_SOURCE
-#include <getopt.h>
 
 #ifdef HAVE_CONFIG_H
 	#include "config.h"
@@ -30,13 +39,13 @@
 #include "isatap.h"
 
 
+static struct PRLENTRY* prl_head = NULL;
+
 
 static void sighup_handler_child() {
 	exit(EXIT_CHECK_PRL);
 }
 
-
-static struct PRLENTRY* prl_head = NULL;
 
 void flush_internal_prl() {
 	while (prl_head)
@@ -54,7 +63,7 @@ struct PRLENTRY* new_internal_pdr() {
 
 	n->ip = 0;
 	n->next = NULL;
-	n->interval = 0;
+	n->default_timeout = 0;
 	n->next_timeout = 0;
 	n->rs_sent = 0;
 	memset(&n->addr6, 0, sizeof(n->addr6));
@@ -171,14 +180,14 @@ static int ipv4_is_private(uint32_t addr) {
 
 
 /**
- * Sends out one ISATAP-RS to a specified IPv4 address
+ * Sends out one ISATAP-RS to a specified IPv6 address
  **/
-static int solicitate_router(int fd, char* tunnel_name, struct sockaddr_in6 *addr6) {
-	if (verbose >= 2) {
+static int solicitate_router(int fd, int ifindex, struct sockaddr_in6 *addr6) {
+	if (verbose >= 1) {
 		static char addrstr[INET6_ADDRSTRLEN];
 		syslog(LOG_INFO, "Soliciting %s\n", inet_ntop(AF_INET6, &addr6->sin6_addr, addrstr, sizeof(addrstr)));
 	}
-	if (send_rdisc(fd, tunnel_name, &addr6->sin6_addr) < 0) {
+	if (send_rdisc(fd, ifindex, &addr6->sin6_addr) < 0) {
 		if (verbose >= -1) {
 			syslog(LOG_ERR, "send_rdisc: %s\n", strerror(errno));
 		}
@@ -188,7 +197,7 @@ static int solicitate_router(int fd, char* tunnel_name, struct sockaddr_in6 *add
 }
 
 /**
- * Resolves one router name and appends found IPv4 Addresses
+ * Resolves one router name and appends the found IPv4 Addresses
  * to internal PRL
  **/
 int add_router_name_to_internal_prl(const char* host, int interval)
@@ -197,7 +206,7 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 	int err;
 
 	if (host == NULL)
-		return 0;
+		return -1;
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -207,7 +216,7 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 	if (err) {
 		if (verbose >= 0)
 			syslog(LOG_WARNING, "add_router_name_to_internal_prl: %s: %s\n", host, gai_strerror(err));
-		/* host not found is not fatal */
+		/* host not found is less fatal */
 		return 0;
 	}
 
@@ -215,16 +224,17 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 	while (p)
 	{
 		struct in_addr addr;
-		struct PRLENTRY* pr;
 
 		addr = ((struct sockaddr_in*)(p->ai_addr))->sin_addr;
 		if (!find_internal_pdr_by_addr(addr.s_addr)) {
+			struct PRLENTRY* pr;
+
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Adding internal PDR %s\n", inet_ntoa(addr));
 			/* Add local address (not always RFC conform) */
 			pr=new_internal_pdr();
 			pr->ip = addr.s_addr;
-			pr->interval = interval;
+			pr->default_timeout = interval;
 			pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
 			pr->addr6.sin6_addr.s6_addr32[1] = htonl(0x00000000);
 			pr->addr6.sin6_addr.s6_addr32[2] = htonl(0x00005efe);
@@ -232,11 +242,11 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 			
 			add_internal_pdr(pr);
 			
-			/* Add RFC conform address as well, if saddr is public */
+			/* Add RFC conform global address as well, if saddr is public */
 			if (!ipv4_is_private(addr.s_addr)) {
 				pr=new_internal_pdr();
 				pr->ip = addr.s_addr;
-				pr->interval = interval;
+				pr->default_timeout = interval;
 				pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
 				pr->addr6.sin6_addr.s6_addr32[1] = htonl(0x00000000);
 				pr->addr6.sin6_addr.s6_addr32[2] = htonl(0x02005efe);
@@ -257,7 +267,9 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 }
 
 int prune_kernel_prl(const char *dev) {
-	uint32_t addr[5];
+	/* Let's prune at most 20 PRL entries for now.
+	   Everything beyond is left behind. */
+	uint32_t addr[20];
 	int num;
 	
 	num = tunnel_get_prl(dev, addr, sizeof(addr)/sizeof(addr[0]));
@@ -281,6 +293,11 @@ int prune_kernel_prl(const char *dev) {
  * Drops privileges
  * Add PRL to kernel
  * Loop and send RS
+ * 
+ * Returns:
+ *   EXIT_ERROR_FATAL
+ *   EXIT_ERROR_LAYER2
+ *   EXIT_CHECK_PRL
  */
 int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 	struct PRLENTRY* pr;
@@ -291,14 +308,25 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 	
 	fd = create_rs_socket();
 	if (fd <= 2) {
-		syslog(LOG_ERR	, "create_rs_socket: invalid fd\n");
+		if (verbose >= -2)
+			syslog(LOG_ERR, "create_rs_socket: invalid fd\n");
 		return EXIT_ERROR_FATAL;
 	}
 
 	pr = get_first_internal_pdr();
-	if (pr == NULL)
+	if (pr == NULL) {
+		if (verbose >= -2)
+			syslog(LOG_ERR, "PRL empty!\n");
 		return EXIT_ERROR_FATAL;
+	}
+
+	ifindex = if_nametoindex(tunnel_name);
+	if (ifindex < 0) {
+		perror("if_nametoindex");
+		return EXIT_ERROR_FATAL;
+	}
 	
+	/* Add internal PRL to kernel PRL */
 	while (pr) {
 		if (tunnel_add_prl(tunnel_name, pr->ip, 1) < 0) {
 			/* hopefully not fatal. could be EEXIST */
@@ -309,6 +337,7 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 			ia.s_addr = pr->ip;
 			syslog(LOG_INFO, "Adding PDR %s to kernel\n", inet_ntoa(ia));
 		}
+		/* Calculate random delay in ms */
 		pr->next_timeout = (int)(1000.0 *
 		    (double)rand() *
 		    (double)MAX_RTR_SOLICITATION_DELAY /
@@ -317,6 +346,7 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 	}
 
 	/* Drop privileges */
+	/* TODO: Make this configurable */
 	setgid(65534);
 	setuid(65534);
 	
@@ -325,17 +355,13 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 	signal(SIGHUP, sighup_handler_child);
 
 
-	ifindex = if_nametoindex(tunnel_name);
-	if (ifindex < 0)
-		return EXIT_ERROR_FATAL;
-
 	while (check_prl_timeout > 0) {
 		fd_set fds;
 		struct timeval timeout;
-		int r, next_timeout;
+		int ret, next_timeout;
 		
-		pr = get_first_internal_pdr();
 		next_timeout = check_prl_timeout;
+		pr = get_first_internal_pdr();
 		while (pr) {
 			if (pr->next_timeout < next_timeout)
 				next_timeout = pr->next_timeout;
@@ -347,13 +373,15 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 		timeout.tv_sec = next_timeout / 1000;
 		timeout.tv_usec = (next_timeout % 1000) * 1000;
 
-		r = select(fd+1, &fds, NULL, NULL, &timeout);
-		if (r < 0) {
+		ret = select(fd+1, &fds, NULL, NULL, &timeout);
+		if (ret < 0) {
 			close(fd);
+			perror("select");
 			return EXIT_ERROR_FATAL;
 		}
 		
-		if ((r != 0) && (FD_ISSET(fd, &fds))) {
+		if ((ret != 0) && (FD_ISSET(fd, &fds))) {
+			/* Data available from socket */
 			next_timeout = next_timeout - timeout.tv_sec * 1000 - timeout.tv_usec / 1000;
 			if (recvadv(fd, ifindex) < 0) {
 				perror("recvadv");
@@ -361,11 +389,13 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 			}
 		}
 		check_prl_timeout -= next_timeout;
+
+		/* Decrease timeout of all PRL entries and fire solicitation if necessary */
 		pr = get_first_internal_pdr();
 		while (pr) {
 			pr->next_timeout -= next_timeout;
 			if (pr->next_timeout <= 0) {
-				if (solicitate_router(fd, tunnel_name, &pr->addr6) < 0) {
+				if (solicitate_router(fd, ifindex, &pr->addr6) < 0) {
 					return EXIT_ERROR_LAYER2;
 				}
 				pr->rs_sent++;

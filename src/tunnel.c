@@ -1,5 +1,5 @@
 /*
- * tunnel.c        lowlevel interface and tunnel routines
+ * tunnel.c     lowlevel interface and tunnel routines
  *
  *              This program is free software; you can redistribute it and/or
  *              modify it under the terms of the GNU General Public License
@@ -26,6 +26,9 @@
 #include "tunnel.h"
 
 
+/**
+ * Return IPv4 address attached to interface 'dev' or 0 if error
+ **/
 uint32_t get_if_addr(const char *dev)
 {
 	struct ifreq ifr;
@@ -225,9 +228,11 @@ int tunnel_get_prl(const char *dev, uint32_t *addr, int num)
 	int i;
 	int fd;
 	
-	p = (struct ip_tunnel_prl*)malloc(sizeof(struct ip_tunnel_prl) * ( num + 2 ));
+	p = (struct ip_tunnel_prl*)
+		malloc(sizeof(struct ip_tunnel_prl) * ( num + 2 ));
 	if (p == 0)
 		return -1;
+
 	p->addr = htonl(INADDR_ANY);
 	p->datalen = (num) * sizeof(struct ip_tunnel_prl);
 
@@ -249,7 +254,6 @@ int tunnel_get_prl(const char *dev, uint32_t *addr, int num)
 	
 	return i;
 }
-
 
 int tunnel_set_mtu(const char *dev, int mtu)
 {

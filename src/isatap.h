@@ -7,21 +7,26 @@
 #define   RTR_SOLICITATION_INTERVAL           4 /*secs*/
 #define   MAX_RTR_SOLICITATIONS               3 /*transmissions*/
 #define   DEFAULT_MINROUTERSOLICITINTERVAL  120 /*secs*/
-#define   WAIT_FOR_LINK                      10 /* seconds between polling, if link is down */
+#define   DEFAULT_PRLREFRESHINTERVAL       3600 /*secs*/
+#define   WAIT_FOR_LINK                      60 /* seconds between polling, if link is down */
+#define   WAIT_FOR_PRL                       60 /* seconds between polling, if PRL is	 empty */
 
 
-#define EXIT_ERROR_LAYER2 (100)
-#define EXIT_CHECK_PRL (101)
-#define EXIT_ERROR_FATAL (102)
+
+/* Return values for run_solicitation_loop */
+#define EXIT_ERROR_LAYER2	100
+#define EXIT_CHECK_PRL 		101
+#define EXIT_ERROR_FATAL 	102
 
 
 struct PRLENTRY {
-	struct PRLENTRY* next;
-	uint32_t ip;
-	struct sockaddr_in6 addr6;
-	int interval;
-	int next_timeout;
-	int rs_sent;
+	struct PRLENTRY* next;		/* next linked list element */
+
+	uint32_t ip;			/* IPv4 address */
+	struct sockaddr_in6 addr6;	/* Calculated LL IPv6 address */
+	int default_timeout;		/* Default lifetime */
+	int next_timeout;		/* Time in ms for next RS */
+	int rs_sent;			/* Number of RS already sent */
 };
 
 
@@ -39,3 +44,4 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout);
 
 
 #endif
+

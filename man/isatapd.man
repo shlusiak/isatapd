@@ -13,11 +13,11 @@ isatapd \- ISATAP client for Linux
 
 .SH DESCRIPTION
 .B isatapd
-is a userspace program or daemon that sets up and maintains an ISATAP tunnel by using the kernels ISATAP capabilities, first introduced with 2.6.25. 
+is a userspace program or daemon that sets up and maintains an ISATAP client tunnel by using the kernels ISATAP capabilities, first introduced with 2.6.25.
 
 The program will create the tunnel, periodically query the specified routers, add them to the 
 .I potential router list
-and send periodic router solicitations. 
+, send periodic router solicitations and parse router advertisements.
 .B isatapd
 will try to keep the tunnel up and running, even if the network topology changes.
 
@@ -58,29 +58,22 @@ will resolv the hostname, add the IPv4 address to the
 .I PRL
 and send periodic router solicitation messages. Up to 10 potential routers can be specified, the default is the unqualified domainname "isatap". 
 .TP
-\fB\-\-user\-rs\fP
-Send router solicitations to potential routers from userspace. Default for Linux \<= 2.6.30.
-.TP
-\fB\-\-no\-user\-rs\fP
-Do not send router solicitation messages to potential routers from userspace. Default for Linux \>\= 2.6.31.
-.TP
 \fB\-i \-\-interval\fP \fIseconds\fP
-Interval to check the PRL, to send router solicitations and to check the state of the tunnel and the infrastructure. Make sure to set it lower than the default lifetime in the router advertisements.
+Default interval to send router solicitations. If the router lifetime is lower, the interval will be 80\% of the router\'s lifetime.
 
 Default: 600 sec = 10 min
+.TP
+\fB\-i \-\-check-dns\fP \fIseconds\fP
+Interval to perform DNS resolution of configured routers and to recreate the PRL, if necessary.
+
+Default: 3600 sec = 1 hour
 .TP
 \fB\-\-daemon \-d\fP
 fork to background. No logging is available yet.
 .TP
 \fB\-p \-\-pid\fP \fIfile\fP
 Store the pid as plaintext to \fIfile\fP. The pid file will be write-locked to prevent multiple running instances. Useful for scripts and when running \fBisatapd\fP as a daemon.
-.TP
-\fB\-\-one\-shot \-1\fP
-Set up the tunnel interface, the PRL, send router solicitations once and then exit. Make sure you use in-kernel router solicitations or a static configuration to keep the tunnel operating.
 
-The interface can be manually configured using the
-.B ip(8)
-tool.
 .TP
 \fB\-v \-\-verbose\fP
 increase verbosity
@@ -110,24 +103,19 @@ Gracefully shut down tunnel device and terminate.
 logs to stderr when run in foreground and to \fBsyslog\fP(3), using the facility \fILOG_DAEMON\fP. Verbosity can be controlled with the \fB\-v\fP and \fB\-q\fP switches.
 
 .SH "NOTES"
+Network data will be processed by
 .B isatapd
-does not process any kind of network data, so it should be moderately safe against network based attacks. To create the tunnel device, root privileges are needed.
-
-Linux kernel \<\= 2.6.30 does not send router solicitations to potential routers.
-.B isatapd
-can send router solicitatioins to \fIfe80::5efe:$IPv4\fP and \fIfe80::200:5efe:$IPv4\fP for every given potential router\'s IPv4 address.
-If kernel support is detected,
-.B isatapd
-will prefer it over the userspace implementation. If you have problems, you can override this with 
-.B --user-rs
-and
-.B --no-user-rs 
-and make sure, your router is configured with a fully RFC compliant link local address. 
+with privileges of the \'nobody\' user to minimize impact of bugs. To create and manage the tunnel device, root privileges are necessary.
 
 Whenever the tunnel link interface goes down or the source address for the local tunnel endpoint changes, the tunnel device will be destroyed and recreated, if possible. Note that till then your tunnel might be in a unusable state.
 
 .SH AUTHORS
 Sascha Hlusiak \<mail\@saschahlusiak.de\>
+
+Kwong-Sang Yin \<kwong-sang.yin\@boeing.com\>
+
+Fred Templin \<fred.l.templin\@boeing.com\>
+
 
 .SH "SEE ALSO"
 .BR ip (8)

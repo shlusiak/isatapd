@@ -3,7 +3,7 @@
 
 
 int create_rs_socket();
-int send_rdisc(int fd, const char *dev, struct in6_addr *addr);
+int send_rdisc(int fd, int ifindex, struct in6_addr *addr);
 
 ssize_t recvadv(int fd, int ifindex);
 
