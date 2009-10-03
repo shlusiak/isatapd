@@ -39,7 +39,6 @@
 #include "tunnel.h"
 #include "rdisc.h"
 #include "isatap.h"
-#include "prl.h"
 
 
 #define DEFAULT_ROUTER_NAME "isatap"

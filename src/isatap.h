@@ -13,6 +13,24 @@
 #define EXIT_ERROR_FATAL (102)
 
 
+struct PRLENTRY {
+	struct PRLENTRY* next;
+	uint32_t ip;
+	struct sockaddr_in6 addr6;
+	int interval;
+	int next_timeout;
+	int rs_sent;
+};
+
+
+void flush_internal_prl();
+void add_internal_pdr(struct PRLENTRY* pr);
+struct PRLENTRY* new_internal_pdr();
+struct PRLENTRY* del_internal_pdr(struct PRLENTRY* pr);
+struct PRLENTRY* find_internal_pdr_by_addr(uint32_t ip);
+struct PRLENTRY* find_internal_pdr_by_addr6(struct in6_addr *addr);
+struct PRLENTRY* get_first_internal_pdr();
+
 int add_router_name_to_internal_prl(const char* host, int interval);
 int prune_kernel_prl(const char* dev);
 int run_solicitation_loop(char* tunnel_name, int check_prl_timeout);
