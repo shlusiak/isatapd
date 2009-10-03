@@ -190,6 +190,10 @@ static void parse_options(int argc, char** argv)
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
 					show_help();
 				}
+				if (rs_interval < DEFAULT_MINROUTERSOLICITINTERVAL) {
+					syslog(LOG_ERR, "interval must be greater than %d sec\n", rs_interval);
+					show_help();
+				}
 			}
 			break;
 		case 'D': if (optarg) {

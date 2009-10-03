@@ -169,6 +169,8 @@ parseadv (const struct nd_router_advert *ra, int len, struct PRLENTRY *pr)
 	}
 
 	pr->next_timeout = (int)(router_lifetime * 1000.0);
+	if (pr->next_timeout < DEFAULT_MINROUTERSOLICITINTERVAL)
+		pr->next_timeout = DEFAULT_MINROUTERSOLICITINTERVAL;
 	pr->rs_sent = 0;
 
 	return 0;
