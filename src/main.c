@@ -50,7 +50,7 @@ static struct ROUTER_NAME {
 	struct ROUTER_NAME* next;
 } *router_name = NULL;
 
-static int   rs_interval = 600;
+static int   rs_interval = 65536;
 static int   dns_interval = DEFAULT_PRLREFRESHINTERVAL;
        int   verbose = 0;
 static int   daemonize = 0;
@@ -116,7 +116,7 @@ static void show_help()
 	fprintf(stderr, "                       default: '%s'.\n", DEFAULT_ROUTER_NAME);
 	
 	fprintf(stderr, "       -i --interval   interval to perform router solicitation\n");
-	fprintf(stderr, "                       default: %d seconds\n", rs_interval);
+	fprintf(stderr, "                       default: auto\n");
 	fprintf(stderr, "          --check-dns  interval to perform DNS resolution and\n");
 	fprintf(stderr, "                       recreate PRL.\n");
 	fprintf(stderr, "                       default: %d seconds\n", DEFAULT_PRLREFRESHINTERVAL);

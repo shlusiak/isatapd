@@ -59,9 +59,9 @@ will resolv the hostname, add the IPv4 address to the
 and send periodic router solicitation messages. Up to 10 potential routers can be specified, the default is the unqualified domainname "isatap". 
 .TP
 \fB\-i \-\-interval\fP \fIseconds\fP
-Default interval to send router solicitations. If the router lifetime is lower, the interval will be 80\% of the router\'s lifetime.
+Default interval to send router solicitations. If the router lifetime is lower, the interval will be 80\% of the router\'s lifetime. Can be used to force solicitations at a shorter interval.
 
-Default: 600 sec = 10 min
+Default: auto
 .TP
 \fB\-i \-\-check-dns\fP \fIseconds\fP
 Interval to perform DNS resolution of configured routers and to recreate the PRL, if necessary.
