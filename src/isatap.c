@@ -307,7 +307,7 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 	srand((unsigned int)time(NULL));
 	
 	fd = create_rs_socket();
-	if (fd <= 2) {
+	if (fd < 0) {
 		if (verbose >= -2)
 			syslog(LOG_ERR, "create_rs_socket: invalid fd\n");
 		return EXIT_ERROR_FATAL;
