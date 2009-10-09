@@ -347,9 +347,8 @@ static uint32_t wait_for_link()
 			if (verbose >= 2) {
 				syslog(LOG_DEBUG, "still waiting for link...\n");
 			}
-			sleep(WAIT_FOR_LINK);
-			if (go_down)
-				return 0;
+			if (sleep(WAIT_FOR_LINK) || go_down)
+				return 0; /* Interrupted by signal */
 			saddr = get_tunnel_saddr(interface_name);
 		} while ((go_down == 0) && (saddr == 0));
 
@@ -530,6 +529,10 @@ begin:
 
 	/* Wait till we find an outgoing interface for the first entry in the PRL */
 	saddr = wait_for_link();
+	if (go_down)
+		goto end;
+	if (saddr == 0)
+		goto begin;
 	create_isatap_tunnel(saddr);
 
 	while (!go_down)
@@ -579,16 +582,13 @@ begin:
 			break;
 		}
 
-		/* Try to detect link */
-		saddr_n = wait_for_link();
-		if (go_down)
-			break;
+		/* Try to detect link change */
+		saddr_n = get_tunnel_saddr(interface_name);
 
-		if (saddr_n != saddr || status == EXIT_ERROR_LAYER2) {
+		if (saddr_n != saddr || saddr_n == 0 || status == EXIT_ERROR_LAYER2) {
 			syslog(LOG_WARNING, "Link change detected. Re-creating tunnel.\n");
 			delete_isatap_tunnel();
-			saddr = saddr_n;
-			create_isatap_tunnel(saddr);
+			goto begin;
 		}
 	}
 	delete_isatap_tunnel();
