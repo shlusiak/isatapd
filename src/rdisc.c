@@ -209,7 +209,11 @@ parseadv (const struct nd_router_advert *ra, int len, struct PRLENTRY *pr)
 					syslog(LOG_INFO, "  Prefix %s/%u, lifetime %d sec\n", 
 					       str,
 					       pi->nd_opt_pi_prefix_len,
-					       ntohl(pi->nd_opt_pi_valid_time));
+					       ntohl(pi->nd_opt_pi_preferred_time));
+
+				v = 0.8 * (double)ntohl(pi->nd_opt_pi_preferred_time);
+				if (v > 0 && v < router_lifetime)
+					router_lifetime = v; /* 80% of lifetime */
 
 				v = 0.8 * (double)ntohl(pi->nd_opt_pi_valid_time);
 				if (v > 0 && v < router_lifetime)
@@ -302,7 +306,7 @@ ssize_t recvadv(int fd, int ifindex)
 		if (verbose >= 2 && inet_ntop (AF_INET6, &addr.sin6_addr,
 			str, sizeof (str)) != NULL)
 			syslog(LOG_INFO, "Ignoring Advertisement from %s (scope mismatch)", str);
-		return val;
+		return 0;
 	}
 
 	/* Find internal PRL entry */

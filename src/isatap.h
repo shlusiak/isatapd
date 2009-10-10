@@ -9,7 +9,7 @@
 #define   DEFAULT_MINROUTERSOLICITINTERVAL  120 /*secs*/
 #define   DEFAULT_PRLREFRESHINTERVAL       3600 /*secs*/
 #define   WAIT_FOR_LINK                      60 /* seconds between polling, if link is down */
-#define   WAIT_FOR_PRL                       60 /* seconds between polling, if PRL is	 empty */
+#define   WAIT_FOR_PRL                       60 /* seconds between polling, if PRL is empty */
 
 
 

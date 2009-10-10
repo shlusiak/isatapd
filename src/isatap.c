@@ -272,6 +272,8 @@ int prune_kernel_prl(const char *dev) {
 	uint32_t addr[20];
 	int num;
 	
+	/* TODO: Compare PRL with old internal PRL instead
+	   of reading it from the kernel */
 	num = tunnel_get_prl(dev, addr, sizeof(addr)/sizeof(addr[0]));
 	if (num < 0)
 		return -1;
@@ -306,13 +308,6 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 
 	srand((unsigned int)time(NULL));
 	
-	fd = create_rs_socket();
-	if (fd < 0) {
-		if (verbose >= -2)
-			syslog(LOG_ERR, "create_rs_socket: invalid fd\n");
-		return EXIT_ERROR_FATAL;
-	}
-
 	pr = get_first_internal_pdr();
 	if (pr == NULL) {
 		if (verbose >= -2)
@@ -325,7 +320,14 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 		perror("if_nametoindex");
 		return EXIT_ERROR_FATAL;
 	}
-	
+
+	fd = create_rs_socket();
+	if (fd < 0) {
+		if (verbose >= -2)
+			syslog(LOG_ERR, "create_rs_socket: invalid fd\n");
+		return EXIT_ERROR_FATAL;
+	}
+
 	/* Add internal PRL to kernel PRL */
 	while (pr) {
 		if (tunnel_add_prl(tunnel_name, pr->ip, 1) < 0) {
