@@ -18,7 +18,7 @@ Simple usage example:
 # isatapd --daemon --pid /var/run/isatapd.pid
 
 Or more complex:
-# isatapd --verbose --name isatap0 --mtu 1200 --interval 300 isatap-router.localdomain.tld
+# isatapd --verbose --name isatap0 --mtu 1280 --interval 300 isatap-router.localdomain.tld
 
 See isatapd(8) for details.
 
