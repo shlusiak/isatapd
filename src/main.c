@@ -104,11 +104,11 @@ static void show_help()
 	fprintf(stderr, "                       default: is0\n");
 	fprintf(stderr, "       -l --link       tunnel link device\n");
 	fprintf(stderr, "                       default: auto\n");
-	fprintf(stderr, "          --mtu        set tunnel MTU\n");
+	fprintf(stderr, "       -m --mtu        set tunnel MTU\n");
 	fprintf(stderr, "                       default: auto\n");
-	fprintf(stderr, "          --ttl        set tunnel hoplimit.\n");
+	fprintf(stderr, "       -t --ttl        set tunnel hoplimit.\n");
 	fprintf(stderr, "                       default: %d\n", ttl);
-	fprintf(stderr, "          --nopmtudisc disable ipv4 pmtu discovery.\n");
+	fprintf(stderr, "       -N --nopmtudisc disable ipv4 pmtu discovery.\n");
 	fprintf(stderr, "                       default: pmtudisc enabled\n");
 	fprintf(stderr, "\n");
 
@@ -117,7 +117,7 @@ static void show_help()
 	
 	fprintf(stderr, "       -i --interval   interval to perform router solicitation\n");
 	fprintf(stderr, "                       default: auto\n");
-	fprintf(stderr, "          --check-dns  interval to perform DNS resolution and\n");
+	fprintf(stderr, "       -D --check-dns  interval to perform DNS resolution and\n");
 	fprintf(stderr, "                       recreate PRL.\n");
 	fprintf(stderr, "                       default: %d seconds\n", DEFAULT_PRLREFRESHINTERVAL);
 	fprintf(stderr, "\n");
@@ -150,7 +150,7 @@ static void show_version()
 static void parse_options(int argc, char** argv)
 {
 	int c;
-	const char* short_options = "hn:i:r:vqd1l:p:";
+	const char* short_options = "hn:i:r:vqd1l:p:m:t:ND:";
 	struct option long_options[] = {
 		{"help", 0, NULL, 'h'},
 		{"name", 1, NULL, 'n'},
@@ -165,7 +165,7 @@ static void parse_options(int argc, char** argv)
 		{"mtu", 1, NULL, 'm'},
 		{"pid", 1, NULL, 'p'},
 		{"ttl", 1, NULL, 't'},
-		{"nopmtudisc", 0, NULL, 'P'},
+		{"nopmtudisc", 0, NULL, 'N'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -229,7 +229,7 @@ static void parse_options(int argc, char** argv)
 				}
 			}
 			break;
-		case 'P': pmtudisc = 0;
+		case 'N': pmtudisc = 0;
 			break;
 
 		case 'V': show_version();

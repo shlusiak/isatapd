@@ -40,15 +40,15 @@ If unspecified, the outgoing IPv4 address will be guessed for the first
 .I router
 and the tunnel created accordingly. The tunnel device will only created, if there is a possible IPv4 source address to reach the first router.
 .TP
-\fB\-\-mtu \fIbytes\fP
+\fB\-m \-\-mtu \fIbytes\fP
 Sets the MTU to 
 .I value
 for the tunnel device, minimum is 1280. If unspecified, the kernel will choose the MTU automatically, usually 1480.
 .TP
-\fB\-\-ttl\fP \fIhoplimit\fP
+\fB\-t \-\-ttl\fP \fIhoplimit\fP
 Set the tunnel hoplimit, default is 64. Specifying 'auto' or 'inherit' will make the tunnel inherit the ttl from the linked device.
 .TP
-\fB\-\-nopmtudisc\fP
+\fB\-N \-\-nopmtudisc\fP
 Disable (IPv4) Path MTU Discovery on this tunnel. For this to work --ttl has to be set to inherit. Default: do Path MTU Discovery to reduce redundant fragmentation.
 .TP
 \fB\-r \-\-router\fP \fIrouter\fP
@@ -63,12 +63,12 @@ Default interval to send router solicitations. If the router lifetime is lower, 
 
 Default: auto
 .TP
-\fB\-i \-\-check-dns\fP \fIseconds\fP
+\fB\-D \-\-check-dns\fP \fIseconds\fP
 Interval to perform DNS resolution of configured routers and to recreate the PRL, if necessary.
 
 Default: 3600 sec = 1 hour
 .TP
-\fB\-\-daemon \-d\fP
+\fB\-d \-\-daemon\fP
 fork to background. No logging is available yet.
 .TP
 \fB\-p \-\-pid\fP \fIfile\fP
