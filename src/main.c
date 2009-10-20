@@ -569,7 +569,6 @@ begin:
 			/* Child requested to recheck PRL withou taking the tunnel down */
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Rechecking DNS entries for PRL\n");
-			fill_internal_prl();
 			if (fill_internal_prl() < 0) {
 				/* If PRL suddenly is empty, restart from the beginning */
 				delete_isatap_tunnel();
