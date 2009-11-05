@@ -64,7 +64,7 @@ Default interval to send router solicitations. If the router lifetime is lower, 
 Default: auto
 .TP
 \fB\-D \-\-check-dns\fP \fIseconds\fP
-Interval to perform DNS resolution of configured routers and to recreate the PRL, if necessary.
+Interval to perform DNS resolution of configured routers and to recreate the PRL, if necessary. Set to 0 to disable.
 
 Default: 3600 sec = 1 hour
 .TP

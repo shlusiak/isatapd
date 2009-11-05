@@ -185,8 +185,7 @@ static void parse_options(int argc, char** argv)
 				add_router_to_name_list(optarg);
 			break;
 		case 'i': if (optarg) {
-				rs_interval = atoi(optarg);
-				if (rs_interval <= 0) {
+				if ((sscanf(optarg, "%d", &rs_interval) < 1) || (rs_interval < 0)) {
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
 					show_help();
 				}
@@ -197,9 +196,12 @@ static void parse_options(int argc, char** argv)
 			}
 			break;
 		case 'D': if (optarg) {
-				dns_interval = atoi(optarg);
-				if (dns_interval <= 0) {
+				if ((sscanf(optarg, "%d", &dns_interval) < 1) || (dns_interval < 0)) {
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
+					show_help();
+				}
+				if (dns_interval != 0 && dns_interval < DEFAULT_MINROUTERSOLICITINTERVAL) {
+					syslog(LOG_ERR, "dns-check interval must be greater than %d sec\n", DEFAULT_MINROUTERSOLICITINTERVAL);
 					show_help();
 				}
 			}

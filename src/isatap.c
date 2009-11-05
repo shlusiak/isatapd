@@ -306,10 +306,11 @@ int prune_kernel_prl(const char *dev) {
  *   EXIT_ERROR_LAYER2
  *   EXIT_CHECK_PRL
  */
-int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
+int run_solicitation_loop(char* tunnel_name, int check_dns_timeout) {
 	struct PRLENTRY* pr;
 	int fd;
 	int ifindex;
+	int check_dns;
 
 	srand((unsigned int)time(NULL));
 	
@@ -361,14 +362,21 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 	signal(SIGINT, SIG_IGN);
 	signal(SIGHUP, sighup_handler_child);
 
+	check_dns = (check_dns_timeout > 0);
 
-	while (check_prl_timeout > 0) {
+	while (!check_dns || check_dns_timeout > 0) {
 		fd_set fds;
 		struct timeval timeout;
-		int ret, next_timeout;
+		int ret;
+		int next_timeout;
 		
-		next_timeout = check_prl_timeout;
 		pr = get_first_internal_pdr();
+		
+		if (check_dns)
+			next_timeout = check_dns_timeout;
+		else
+			next_timeout = pr->next_timeout;
+		
 		while (pr) {
 			if (pr->next_timeout < next_timeout)
 				next_timeout = pr->next_timeout;
@@ -395,7 +403,8 @@ int run_solicitation_loop(char* tunnel_name, int check_prl_timeout) {
 				return EXIT_ERROR_LAYER2;
 			}
 		}
-		check_prl_timeout -= next_timeout;
+		if (check_dns)
+			check_dns_timeout -= next_timeout;
 
 		/* Decrease timeout of all PRL entries and fire solicitation if necessary */
 		pr = get_first_internal_pdr();

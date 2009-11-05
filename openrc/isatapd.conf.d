@@ -9,7 +9,7 @@
 # Default (unset): 'auto'
 #ISATAP_INTERVAL="600"
 
-# Interval in seconds to check for DNS changes.
+# Interval in seconds to check for DNS changes. Set to 0 to disable.
 # Default: 3600
 #ISATAP_CHECK_DNS="3600"
 
