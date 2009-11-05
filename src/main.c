@@ -261,8 +261,14 @@ static void parse_options(int argc, char** argv)
 static int fill_internal_prl()
 {
 	struct ROUTER_NAME* r;
+	struct PRLENTRY *e;
 	
-	flush_internal_prl();
+	e=get_first_internal_pdr();
+	while (e) {
+		e->stale = 1;
+		e=e->next;
+	}
+	
 	r = router_name;
 	while (r) {
 		if (add_router_name_to_internal_prl(r->name, rs_interval) < 0)

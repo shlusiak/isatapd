@@ -63,9 +63,11 @@ struct PRLENTRY* new_internal_pdr() {
 
 	n->ip = 0;
 	n->next = NULL;
+	n->sibling = NULL;
 	n->default_timeout = 0;
 	n->next_timeout = 0;
 	n->rs_sent = 0;
+	n->stale = 0;
 	memset(&n->addr6, 0, sizeof(n->addr6));
 
 	return n;
@@ -224,11 +226,11 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 	while (p)
 	{
 		struct in_addr addr;
-
+		struct PRLENTRY* pr;
+		
 		addr = ((struct sockaddr_in*)(p->ai_addr))->sin_addr;
-		if (!find_internal_pdr_by_addr(addr.s_addr)) {
-			struct PRLENTRY* pr;
-
+		pr = find_internal_pdr_by_addr(addr.s_addr);
+		if (!pr) {
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Adding internal PDR %s\n", inet_ntoa(addr));
 			/* Add local address (not always RFC conform) */
@@ -244,7 +246,10 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 			
 			/* Add RFC conform global address as well, if saddr is public */
 			if (!ipv4_is_private(addr.s_addr)) {
-				pr=new_internal_pdr();
+				pr->sibling = new_internal_pdr();
+				pr->sibling->sibling = pr;
+				pr=pr->sibling;
+				
 				pr->ip = addr.s_addr;
 				pr->default_timeout = interval;
 				pr->addr6.sin6_addr.s6_addr32[0] = htonl(0xfe800000);
@@ -255,8 +260,14 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 				add_internal_pdr(pr);
 			}
 		} else {
-			if (verbose >=1)
-				syslog(LOG_INFO, "Ignoring duplicate internal PDR %s\n", inet_ntoa(addr));
+			if (verbose >=2)
+				syslog(LOG_INFO, "%s duplicate internal PDR %s\n",
+					pr->stale?"Refreshing":"Ignoring",
+					inet_ntoa(addr));
+			pr->stale = 0; /* Refresh PRL entry */
+			if (pr->sibling)
+				pr->sibling->stale = 0;
+			
 		}
 
 		p=p->ai_next;
@@ -267,25 +278,19 @@ int add_router_name_to_internal_prl(const char* host, int interval)
 }
 
 int prune_kernel_prl(const char *dev) {
-	/* Let's prune at most 20 PRL entries for now.
-	   Everything beyond is left behind. */
-	uint32_t addr[20];
-	int num;
+	struct PRLENTRY* pr;
 	
-	/* TODO: Compare PRL with old internal PRL instead
-	   of reading it from the kernel */
-	num = tunnel_get_prl(dev, addr, sizeof(addr)/sizeof(addr[0]));
-	if (num < 0)
-		return -1;
-	
-	while (--num >= 0) {
-		if (find_internal_pdr_by_addr(addr[num]) == NULL) {
+	pr=get_first_internal_pdr();
+	while (pr) {
+		if (pr->stale) {
 			struct in_addr ia;
-			ia.s_addr = addr[num];
+			ia.s_addr = pr->ip;
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Removing old PDR %s from kernel\n", inet_ntoa(ia));
-			tunnel_del_prl(dev, addr[num]);
-		}
+			tunnel_del_prl(dev, pr->ip);
+			pr = del_internal_pdr(pr);
+		} else 
+			pr = pr->next;
 	}
   
 	return 0;

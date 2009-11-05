@@ -318,15 +318,13 @@ ssize_t recvadv(int fd, int ifindex)
 		if (parseadv(ra, val, pr) < 0)
 			return 0;
 		
-		/* Advertising succeeded. Try to find sibling */
-		addr.sin6_addr.s6_addr32[2] ^= htonl(0x02000000);
-		pr = find_internal_pdr_by_addr6(&addr.sin6_addr);
-		if (pr) {
+		if (pr->sibling) {
 			/* We already succeeded with that IPv4 router, so deprecate it */
 			if (verbose >= 2 && inet_ntop (AF_INET6, &addr.sin6_addr,
 				str, sizeof (str)) != NULL)
 				syslog(LOG_INFO, " (Not soliciting %s anymore)\n", str);
-			del_internal_pdr(pr);
+			del_internal_pdr(pr->sibling);
+			pr->sibling = NULL;
 		}
 	} else {
 		if (verbose >= 1 && inet_ntop (AF_INET6, &addr.sin6_addr,

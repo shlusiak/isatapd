@@ -22,11 +22,13 @@
 struct PRLENTRY {
 	struct PRLENTRY* next;		/* next linked list element */
 
+	struct PRLENTRY* sibling;	/* If there is another LL IPv6 address for same IPv4 address */
 	uint32_t ip;			/* IPv4 address */
 	struct sockaddr_in6 addr6;	/* Calculated LL IPv6 address */
 	int default_timeout;		/* Default lifetime */
 	int next_timeout;		/* Time in ms for next RS */
 	int rs_sent;			/* Number of RS already sent */
+	int stale;			/* Find stale PRL entries, that are not in DNS anymore */
 };
 
 
