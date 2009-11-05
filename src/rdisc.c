@@ -320,9 +320,12 @@ ssize_t recvadv(int fd, int ifindex)
 		
 		if (pr->sibling) {
 			/* We already succeeded with that IPv4 router, so deprecate it */
-			if (verbose >= 2 && inet_ntop (AF_INET6, &addr.sin6_addr,
+			if (verbose >= 2 && inet_ntop (AF_INET6, &pr->sibling->addr6.sin6_addr,
 				str, sizeof (str)) != NULL)
 				syslog(LOG_INFO, " (Not soliciting %s anymore)\n", str);
+			
+			/* NOTE: This does not delete the sibling in the parent process! */
+			/* It will come up again when refreshing DNS */
 			del_internal_pdr(pr->sibling);
 			pr->sibling = NULL;
 		}

@@ -191,7 +191,7 @@ static void parse_options(int argc, char** argv)
 					show_help();
 				}
 				if (rs_interval < DEFAULT_MINROUTERSOLICITINTERVAL) {
-					syslog(LOG_ERR, "interval must be greater than %d sec\n", rs_interval);
+					syslog(LOG_ERR, "interval must be greater than %d sec\n", DEFAULT_MINROUTERSOLICITINTERVAL);
 					show_help();
 				}
 			}
