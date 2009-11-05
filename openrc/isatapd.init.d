@@ -15,7 +15,8 @@ start() {
 	[ -n "${ISATAP_INTERVAL}" ] && DAEMON_OPTS="${DAEMON_OPTS} --interval ${ISATAP_INTERVAL} "
 	[ -n "${ISATAP_NAME}" ] && DAEMON_OPTS="${DAEMON_OPTS} --name ${ISATAP_NAME} "
 	[ -n "${ISATAP_LINK}" ] && DAEMON_OPTS="${DAEMON_OPTS} --link ${ISATAP_LINK} "
-	[ -n "${MTU}" ] && DAEMON_OPTS="${DAEMON_OPTS} --mtu ${MTU} "
+	[ -n "${ISATAP_MTU}" ] && DAEMON_OPTS="${DAEMON_OPTS} --mtu ${ISATAP_MTU} "
+	[ -n "${ISATAP_CHECK_DNS}" ] && DAEMON_OPTS="${DAEMON_OPTS} --check-dns ${ISATAP_CHECK_DNS} "
 
 	ebegin "Starting ${SVCNAME}"
 	start-stop-daemon --start --exec ${ISATAPD} -- \

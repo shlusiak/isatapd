@@ -5,9 +5,13 @@
 # The default is the unqualified hostname 'isatap'
 #ISATAP_ROUTERS=""
 
-# The interval in which router solicitations are to be sent.
-# The default is 600 seconds
+# Interval in seconds to send router solicitations.
+# Default (unset): 'auto'
 #ISATAP_INTERVAL="600"
+
+# Interval in seconds to check for DNS changes.
+# Default: 3600
+#ISATAP_CHECK_DNS="3600"
 
 # Link tunnel to device
 # Default (unset): automatically find outgoing device
@@ -21,7 +25,8 @@
 # the ISATAP router and all other ISATAP clients should be able to
 # handle at least MTU+20 bytes. 
 # The minimum IPv6 MTU (1280 Bytes) is the safest choice here
-MTU="1280"
+ISATAP_MTU="1280"
+
 
 # Additional options, see isatapd(8) for details
 #DAEMON_OPTS=""
