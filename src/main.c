@@ -477,11 +477,7 @@ int main(int argc, char **argv)
 	parse_options(argc, argv);
 
 	if (tunnel_name == NULL) {
-		if (interface_name) {
-			tunnel_name = (char *)malloc(strlen(interface_name)+3+1);
-			strcpy(tunnel_name, "is_");
-			strcat(tunnel_name, interface_name);
-		} else tunnel_name = strdup("is0");
+		tunnel_name = strdup("is0");
 	}
 
 	if (strchr(tunnel_name, ':')) {

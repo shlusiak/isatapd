@@ -28,8 +28,7 @@ below for more information
 .SH "OPTIONS"
 .TP
 \fB\-n \-\-name\fP \fIname\fP
-Name of the tunnel interface. Default is \fIis0\fP for linkless tunnels and
-\fIis_$LINK\fP for tunnels linked to \fI$LINK\fP.
+Name of the tunnel interface. Default is \fIis0\fP.
 .TP
 \fB\-l \-\-link\fP \fIdevice\fP
 Tunnel link device. If specified, tunnel will be restricted to that device, allowing multiple instances of
