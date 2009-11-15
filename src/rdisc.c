@@ -33,6 +33,10 @@
 #include "isatap.h"
 
 
+/**
+ * Creates a IPv6, ICMPv6 RAW-Socket
+ * return: fd or -1
+ **/
 int create_rs_socket()
 {
 	int fd = socket (PF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
@@ -71,6 +75,9 @@ int create_rs_socket()
 	return fd;
 }
 
+/**
+ * Sends a RS to addr, from ifindex
+ **/
 int send_rdisc(int fd, int ifindex, struct in6_addr *addr)
 {
 	struct sockaddr_in6 target;
@@ -100,9 +107,13 @@ int send_rdisc(int fd, int ifindex, struct in6_addr *addr)
 }
 
 
-
-static ssize_t
-recvfromLL (int fd, void *buf, size_t len, int flags,
+/**
+ * Receive a LL packet from socket
+ * return 0: ignore package
+ *       -1: error
+ *       >0: success
+ **/
+static ssize_t recvfromLL (int fd, void *buf, size_t len, int flags,
             struct sockaddr_in6 *addr) 
 {
 	char cbuf[CMSG_SPACE (sizeof (int))];
@@ -122,7 +133,7 @@ recvfromLL (int fd, void *buf, size_t len, int flags,
 	};
 	struct cmsghdr *cmsg;
 
-        ssize_t val = recvmsg (fd, &hdr, flags);
+        ssize_t val = recvmsg(fd, &hdr, flags);
         if (val == -1)
 		return val;
 
@@ -134,7 +145,8 @@ recvfromLL (int fd, void *buf, size_t len, int flags,
 		if ((cmsg->cmsg_level == IPPROTO_IPV6)
 		 && (cmsg->cmsg_type == IPV6_HOPLIMIT))
 		{
-			if (255 != *(int *)CMSG_DATA (cmsg))
+			int* data = (int *)CMSG_DATA (cmsg);
+			if (255 != *data)
 			{
 				/* ignore */
 				return 0;
@@ -146,15 +158,15 @@ recvfromLL (int fd, void *buf, size_t len, int flags,
 }
 
 
-
-static int
-parseadv (const struct nd_router_advert *ra, int len, struct PRLENTRY *pr)
+/**
+ * Parse received RA and set new time out for RS
+ **/
+static int parseadv (const struct nd_router_advert *ra, int len, struct PRLENTRY *pr)
 {
 	/* RFC 5214 8.3.4, extract the router lifetime from RA and
 	 * set timer for the next RS
 	 */
 
-	/**TODO:Include Prefix/Route Information Option lifetimes **/
 	double router_lifetime; /* in secs */
 	double v;
 	const uint8_t *ptr;
@@ -200,24 +212,25 @@ parseadv (const struct nd_router_advert *ra, int len, struct PRLENTRY *pr)
 				if (optlen < sizeof (struct nd_opt_prefix_info))
 					return -1;
 
-				/* displays prefix informations */
-				if (inet_ntop (AF_INET6, &pi->nd_opt_pi_prefix, str,
-					      sizeof (str)) == NULL)
-					return -1;
+				if (verbose >= 1) {
+	  				/* displays prefix informations */
+					if (inet_ntop (AF_INET6, &pi->nd_opt_pi_prefix, str,
+						sizeof (str)) == NULL)
+						return -1;
 
-				if (verbose >= 1)
 					syslog(LOG_INFO, "  Prefix %s/%u, lifetime %d sec\n", 
 					       str,
 					       pi->nd_opt_pi_prefix_len,
 					       ntohl(pi->nd_opt_pi_preferred_time));
+				}
 
 				v = 0.8 * (double)ntohl(pi->nd_opt_pi_preferred_time);
 				if (v > 0 && v < router_lifetime)
-					router_lifetime = v; /* 80% of lifetime */
+					router_lifetime = v; /* 80% of preferred lifetime */
 
 				v = 0.8 * (double)ntohl(pi->nd_opt_pi_valid_time);
 				if (v > 0 && v < router_lifetime)
-					router_lifetime = v; /* 80% of lifetime */
+					router_lifetime = v; /* 80% of valid lifetime */
 
 				break;
 			}
@@ -233,19 +246,21 @@ parseadv (const struct nd_router_advert *ra, int len, struct PRLENTRY *pr)
 					return -1;
 
 				memcpy (dst.s6_addr, ptr + 8, (optlen - 1) << 3);
-				if (inet_ntop (AF_INET6, &dst, str, sizeof (str)) == NULL)
-					return -1;
+
 				lifetime = ntohl(((const uint32_t *)ptr)[1]);
 				
-				if (verbose >= 2)
+				if (verbose >= 2) {
+					if (inet_ntop (AF_INET6, &dst, str, sizeof (str)) == NULL)
+						return -1;
 					syslog(LOG_INFO, "  Route %s/%u, lifetime %d sec\n", 
 						str,
 						plen,
 						lifetime);
+				}
 				
 				v = 0.8 * (double)lifetime;
 				if (v > 0 && v < router_lifetime)
-					router_lifetime = v; /* 80% of lifetime */
+					router_lifetime = v; /* 80% of route lifetime */
 
 				break;
 			}
@@ -268,16 +283,20 @@ parseadv (const struct nd_router_advert *ra, int len, struct PRLENTRY *pr)
 
 
 
-
-ssize_t recvadv(int fd, int ifindex)
+/**
+ * Receive a RA from an interface and parse it
+ * Returns:
+ *  -1: error
+ *   0: ignore/success
+ *   1: success
+ **/
+int recvadv(int fd, int ifindex)
 {
+	/* receives an ICMPv6 packet */
+	/* TODO: use interface MTU as buffer size */
 	ssize_t val = 0;
 	char str[INET6_ADDRSTRLEN];
 	struct nd_router_advert *ra;
- 
-	/* receives an ICMPv6 packet */
-	/**TODO: use interface MTU as buffer size **/
-
 	uint8_t buf[1460];
 	struct sockaddr_in6 addr;
 	struct PRLENTRY *pr;
@@ -287,21 +306,21 @@ ssize_t recvadv(int fd, int ifindex)
 	if (val == -1)
 	{
 		syslog(LOG_ERR, "Receiving ICMPv6 packet: %s\n", strerror(errno));
-		return val;
+		return -1;
 	}
 
 	/* ignore data */
         if (val == 0)
     		return 0;
 
-	/* checks if the packet is a Router Advertisement and ignore, if not */
+	/* checks if the packet is a Router Advertisement and ignore otherwise */
 	ra =  (struct nd_router_advert *)buf;
 	if ((val < sizeof (struct nd_router_advert)) ||
 	    (ra->nd_ra_type != ND_ROUTER_ADVERT) ||
 	    (ra->nd_ra_code != 0))
 		return 0;
 	
-	/* Check matching  scope */
+	/* Check matching scope */
 	if (ifindex != addr.sin6_scope_id) {
 		if (verbose >= 2 && inet_ntop (AF_INET6, &addr.sin6_addr,
 			str, sizeof (str)) != NULL)
@@ -315,11 +334,17 @@ ssize_t recvadv(int fd, int ifindex)
 		if (verbose >= 1 && inet_ntop (AF_INET6, &addr.sin6_addr,
 			str, sizeof (str)) != NULL)
 			syslog(LOG_INFO, "Advertisement from %s\n", str);
-		if (parseadv(ra, val, pr) < 0)
+		
+		/* Ignore unparsable advertisements */
+		if (parseadv(ra, val, pr) < 0) {
+			if (verbose >= 1 && inet_ntop (AF_INET6, &addr.sin6_addr,
+				str, sizeof (str)) != NULL)
+				syslog(LOG_INFO, "Ignoring Advertisement from %s (parse error)\n", str);
 			return 0;
+		}
 		
 		if (pr->sibling) {
-			/* We already succeeded with that IPv4 router, so deprecate it */
+			/* We already succeeded with that IPv4 router, so deprecate the sibling */
 			if (verbose >= 2 && inet_ntop (AF_INET6, &pr->sibling->addr6.sin6_addr,
 				str, sizeof (str)) != NULL)
 				syslog(LOG_INFO, " (Not soliciting %s anymore)\n", str);
@@ -329,14 +354,13 @@ ssize_t recvadv(int fd, int ifindex)
 			del_internal_pdr(pr->sibling);
 			pr->sibling = NULL;
 		}
-	} else {
-		if (verbose >= 1 && inet_ntop (AF_INET6, &addr.sin6_addr,
-			str, sizeof (str)) != NULL)
-			syslog(LOG_WARNING, "Ignoring Advertisement from %s (unsolicited)\n", str);
+		return 1;
 	}
- 
-        return val;
-
+	
+	if (verbose >= 1 && inet_ntop (AF_INET6, &addr.sin6_addr,
+		str, sizeof (str)) != NULL)
+		syslog(LOG_WARNING, "Ignoring Advertisement from %s (unsolicited)\n", str);
+	return 0;
 }
 
 

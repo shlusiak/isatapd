@@ -44,7 +44,10 @@
 static char* tunnel_name = NULL;
 static char* interface_name = NULL;
 
-
+/**
+ * DNS Names or IPv4 Addresses of possible routers
+ * to be resolved later
+ **/
 static struct ROUTER_NAME {
 	char* name;
 	struct ROUTER_NAME* next;
@@ -55,46 +58,18 @@ static int   dns_interval = DEFAULT_PRLREFRESHINTERVAL;
        int   verbose = 0;
 static int   daemonize = 0;
 static char* pid_file = NULL;
-static int   ttl = 64;
-static int   mtu = 0;
+static int   ttl = DEFAULT_TTL;
+static int   mtu = DEFAULT_MTU;
 static int   pmtudisc = 1;
 static int   volatile go_down = 0;
 static pid_t child = 0;
+static char* unpriv_username = DEFAULT_UNPRIV_USERNAME;
 
 static int   syslog_facility = LOG_DAEMON;
 
 
 
-static void sigint_handler(int sig)
-{
-	signal(sig, SIG_DFL);
-	if (verbose >= 0)
-		syslog(LOG_NOTICE, "signal %d received, going down.\n", sig);
-	if (child)
-		kill(child, SIGHUP);
-	go_down = 1;
-}
 
-static void sighup_handler(int sig)
-{
-	if (verbose >= 0)
-		syslog(LOG_NOTICE, "SIGHUP received.\n");
-	if (child)
-		kill(child, SIGHUP);
-}
-
-
-/**
- * Adds a router name to the linked list of router names
- **/
-static void add_router_to_name_list(const char* name)
-{
-	struct ROUTER_NAME *n;
-	n = (struct ROUTER_NAME*)malloc(sizeof(struct ROUTER_NAME));
-	n->next = router_name;
-	router_name = n;
-	n->name = strdup(name);
-}
 
 
 static void show_help()
@@ -107,7 +82,7 @@ static void show_help()
 	fprintf(stderr, "       -m --mtu        set tunnel MTU\n");
 	fprintf(stderr, "                       default: auto\n");
 	fprintf(stderr, "       -t --ttl        set tunnel hoplimit.\n");
-	fprintf(stderr, "                       default: %d\n", ttl);
+	fprintf(stderr, "                       default: %d\n", DEFAULT_TTL);
 	fprintf(stderr, "       -N --nopmtudisc disable ipv4 pmtu discovery.\n");
 	fprintf(stderr, "                       default: pmtudisc enabled\n");
 	fprintf(stderr, "\n");
@@ -124,6 +99,8 @@ static void show_help()
 
 	fprintf(stderr, "       -d --daemon     fork into background\n");
 	fprintf(stderr, "       -p --pid        store pid of daemon in file\n");
+	fprintf(stderr, "          --user       drop privileges to this user\n");
+	fprintf(stderr, "                       default: '%s'\n", DEFAULT_UNPRIV_USERNAME);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -v --verbose    increase verbosity\n");
@@ -147,6 +124,21 @@ static void show_version()
 	exit(0);
 }
 
+
+/**
+ * Adds a router name to the linked list of router names
+ **/
+static void add_router_to_name_list(const char* name)
+{
+	struct ROUTER_NAME *n;
+	n = (struct ROUTER_NAME*)malloc(sizeof(struct ROUTER_NAME));
+	n->next = router_name;
+	router_name = n;
+	n->name = strdup(name);
+}
+
+
+
 static void parse_options(int argc, char** argv)
 {
 	int c;
@@ -166,6 +158,7 @@ static void parse_options(int argc, char** argv)
 		{"pid", 1, NULL, 'p'},
 		{"ttl", 1, NULL, 't'},
 		{"nopmtudisc", 0, NULL, 'N'},
+		{"user", 1, NULL, 'U'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -175,26 +168,36 @@ static void parse_options(int argc, char** argv)
 		if (c == -1) break;
 
 		switch (c) {
+		  /* --name */
 		case 'n': if (optarg)
 				tunnel_name = strdup(optarg);
 			break;
+			
+		  /* --link */
 		case 'l': if (optarg)
 				interface_name = strdup(optarg);
 			break;
+			
+		  /* --router */
 		case 'r': if (optarg)
 				add_router_to_name_list(optarg);
 			break;
+			
+		  /* --interval */
 		case 'i': if (optarg) {
 				if ((sscanf(optarg, "%d", &rs_interval) < 1) || (rs_interval < 0)) {
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
 					show_help();
 				}
 				if (rs_interval < DEFAULT_MINROUTERSOLICITINTERVAL) {
-					syslog(LOG_ERR, "interval must be greater than %d sec\n", DEFAULT_MINROUTERSOLICITINTERVAL);
+					syslog(LOG_ERR, "interval must be greater than %d sec\n", 
+						DEFAULT_MINROUTERSOLICITINTERVAL);
 					show_help();
 				}
 			}
 			break;
+			
+		  /* --check-dns */
 		case 'D': if (optarg) {
 				if ((sscanf(optarg, "%d", &dns_interval) < 1) || (dns_interval < 0)) {
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
@@ -206,21 +209,15 @@ static void parse_options(int argc, char** argv)
 				}
 			}
 			break;
-		case 'v': verbose++;
-			break;
-		case 'q': verbose--;
-			break;
-		case 'd': daemonize = 1;
-			break;
-		case 'p': pid_file = strdup(optarg);
-			break;
-
+			
+		  /* --mtu */
 		case 'm': mtu = atoi(optarg);
 			if (mtu <= 0) {
 				syslog(LOG_ERR, "invalid mtu -- %s\n", optarg);
 				show_help();
 			}
 			break;
+		  /* --ttl */
 		case 't': if ((strcmp(optarg, "auto") == 0) || (strcmp(optarg, "inherit") == 0))
 				ttl = 0;
 			else {
@@ -231,9 +228,28 @@ static void parse_options(int argc, char** argv)
 				}
 			}
 			break;
+		  /* --nopmtudisc */
 		case 'N': pmtudisc = 0;
 			break;
+			
+		  /* --daemonize */
+		case 'd': daemonize = 1;
+			break;
+		  /* --pid */
+		case 'p': pid_file = strdup(optarg);
+			break;
+		  /* --user */
+		case 'U': unpriv_username = strdup(optarg);
+			break;
 
+		  /* --verbose */
+		case 'v': verbose++;
+			break;
+		  /* --quiet */
+		case 'q': verbose--;
+			break;
+
+		  /* --version */
 		case 'V': show_version();
 			break;
 
@@ -250,6 +266,17 @@ static void parse_options(int argc, char** argv)
 		add_router_to_name_list(argv[optind]);
 	if (router_name == NULL)
 		add_router_to_name_list(DEFAULT_ROUTER_NAME);
+	
+	if (tunnel_name == NULL)
+		tunnel_name = strdup(DEFAULT_TUNNEL_NAME);
+	if (strchr(tunnel_name, ':')) {
+		syslog(LOG_ERR, "no ':' in tunnel name: %s!\n", tunnel_name);
+		exit(1);
+	}
+	if (pmtudisc == 0 && ttl) {
+		syslog(LOG_ERR, "--nopmtudisc depends on --ttl inherit!\n");
+		exit(1);
+	}
 }
 
 
@@ -265,6 +292,7 @@ static int fill_internal_prl()
 	struct ROUTER_NAME* r;
 	struct PRLENTRY *e;
 	
+	/* Mark all existing PRL entries as 'stale' */
 	e=get_first_internal_pdr();
 	while (e) {
 		e->stale = 1;
@@ -273,27 +301,36 @@ static int fill_internal_prl()
 	
 	r = router_name;
 	while (r) {
+		/* Resolv single entry and add the IPv4 addresses to PRL */
 		if (add_router_name_to_internal_prl(r->name, rs_interval) < 0)
 			return -1;
 		r = r->next;
 	}
-	if (get_first_internal_pdr())
-		return 0; 
-	return -1;
+	/* Error, if PRL is empty */
+	if (!get_first_internal_pdr())
+		return -1; 
+	return 0;
 }
 
 /**
- * Gets source IPv4 Address of tunnel
- * Either IP address of interface
- * or outgoing IPv4 address
+ * Gets source IPv4 Address of tunnel, either:
+ * - IPv4 address of linked interface
+ * - Detected outgoing IPv4 address
+ * 0 if error
  **/
 static uint32_t get_tunnel_saddr(const char* iface)
 {
 	uint32_t saddr;
 	struct PRLENTRY* pr;
 
-	if (iface)
-		return get_if_addr(iface);
+	if (iface) {
+		saddr = get_if_addr(iface);
+		if (saddr == 0) {
+			if (verbose >= -1)
+				syslog(LOG_ERR, "get_if_addr: %s\n", strerror(errno));
+		}
+		return saddr;
+	}
 
 	pr = get_first_internal_pdr();
 	saddr = 0;
@@ -301,17 +338,18 @@ static uint32_t get_tunnel_saddr(const char* iface)
 	while (pr) {
 		struct sockaddr_in addr, addr2;
 		socklen_t addrlen;
-		int fd = socket (AF_INET, SOCK_DGRAM, 0);
-	
+		int fd = socket (AF_INET, SOCK_DGRAM, 0);	
 		if (fd < 0) {
 			syslog(LOG_ERR, "socket: %s\n", strerror(errno));
 			break;
 		}
 
+		/* Try a UDP connect (no packages are sent) */
 		addr.sin_family = AF_INET;
 		addr.sin_port = 0;
 		addr.sin_addr.s_addr = pr->ip;
 		if (connect (fd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in))== 0) {
+			/* Get local address of connected socket */
 			addrlen = sizeof(addr2);
 			getsockname(fd, (struct sockaddr *)&addr2, &addrlen);
 			if (addrlen == sizeof(addr2)) {
@@ -319,8 +357,8 @@ static uint32_t get_tunnel_saddr(const char* iface)
 					saddr = addr2.sin_addr.s_addr;
 				else if (saddr != addr2.sin_addr.s_addr) {
 					syslog(LOG_WARNING,
-						"Different outgoing interfaces for PDR %s. Removing from internal PRL.\n",
-						inet_ntoa(addr.sin_addr));
+						"Outgoing interface for PDR %s differs from %s. Removing from internal PRL.\n",
+						inet_ntoa(addr.sin_addr), inet_ntoa(addr2.sin_addr));
 					pr = del_internal_pdr(pr);
 					close(fd);
 					continue;
@@ -338,12 +376,13 @@ static uint32_t get_tunnel_saddr(const char* iface)
 }
 
 /**
- * Wait until get_tunnel_saddr is successful and return source address
+ * Wait until get_tunnel_saddr() successfully returns a source address
  **/
 static uint32_t wait_for_link()
 {
 	uint32_t saddr;
-	if ((saddr = get_tunnel_saddr(interface_name)) == 0) {
+	saddr = get_tunnel_saddr(interface_name);
+	if (saddr == 0) {
 		if (verbose >= 0) {
 			if (interface_name)
 				syslog(LOG_INFO, "waiting for link %s to become ready...\n", interface_name);
@@ -374,18 +413,12 @@ static uint32_t wait_for_link()
 
 
 /**
- * Creates isatap tunnel for saddr
- * Sets parameters
+ * Creates isatap tunnel interface for saddr
  * Brings tunnel UP
  **/
 static void create_isatap_tunnel(uint32_t saddr)
 {
-	if (saddr == 0) {
-		if (verbose >= -1)
-			syslog(LOG_ERR, "get_if_addr: %s\n", strerror(errno));
-		exit(1);
-	}
-
+	/* Create tunnel */
 	if (tunnel_add(tunnel_name, interface_name, saddr, ttl, pmtudisc) < 0) {
 		if (verbose >= -1)
 			syslog(LOG_ERR, "tunnel_add: %s\n", strerror(errno));
@@ -398,6 +431,7 @@ static void create_isatap_tunnel(uint32_t saddr)
 		syslog(LOG_INFO, "%s created (local %s, %s)\n", tunnel_name, inet_ntoa(addr), pmtudisc?"pmtudisc":"nopmtudisc");
 	}
 
+	/* Set MTU */
 	if (mtu > 0) {
 		if (tunnel_set_mtu(tunnel_name, mtu) < 0) {
 			if (verbose >= -1)
@@ -418,8 +452,7 @@ static void create_isatap_tunnel(uint32_t saddr)
 }
 
 /**
- * Takes tunnel down
- * Deletes tunnel interface
+ * Sets tunnel interface DOWN and delete it
  **/
 static void delete_isatap_tunnel()
 {
@@ -447,6 +480,7 @@ static void write_pid_file()
 		syslog(LOG_ERR, "Cannot create pid file, terminating: %s\n", strerror(errno));
 		exit(1);
 	}
+	
 	snprintf(s, sizeof(s), "%d\n", (int)getpid());
 	if (write(pf, s, strlen(s)) < strlen(s))
 		syslog(LOG_ERR, "write: %s\n", strerror(errno));
@@ -466,28 +500,50 @@ static void write_pid_file()
 
 
 
+/**
+ * SIGINT, SIGTERM
+ * 
+ * kill child and go down
+ **/
+static void sigint_handler(int sig)
+{
+	signal(sig, SIG_DFL);
+	if (verbose >= 0)
+		syslog(LOG_NOTICE, "signal %d received, going down.\n", sig);
+	if (child)
+		kill(child, SIGHUP);
+	go_down = 1;
+}
+
+
+/**
+ * SIGHUP
+ *
+ * kill child to continue in main loop
+ **/
+static void sighup_handler(int sig)
+{
+	if (verbose >= 0)
+		syslog(LOG_NOTICE, "SIGHUP received.\n");
+	if (child)
+		kill(child, SIGHUP);
+}
+
+static void setup_signals()
+{
+	signal(SIGINT, sigint_handler);
+	signal(SIGTERM, sigint_handler);
+	signal(SIGHUP, sighup_handler);
+}
+
 
 
 int main(int argc, char **argv)
 {
 	uint32_t saddr;
-	int status;
 
 	openlog(NULL, LOG_PID | LOG_PERROR, syslog_facility);
 	parse_options(argc, argv);
-
-	if (tunnel_name == NULL) {
-		tunnel_name = strdup("is0");
-	}
-
-	if (strchr(tunnel_name, ':')) {
-		syslog(LOG_ERR, "no ':' in tunnel name: %s!\n", tunnel_name);
-		exit(1);
-	}
-	if (pmtudisc == 0 && ttl) {
-		syslog(LOG_ERR, "--nopmtudisc depends on --ttl inherit!\n");
-		exit(1);
-	}
 
 	if (daemonize == 1) {
 		pid_t pid;
@@ -498,31 +554,25 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 		if (pid > 0) {
-			/* Server */
+			/* Father */
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Running isatap daemon as pid %d\n", (int)pid);
 			exit(0);
 		}
-		/* Client */
+		/* Child */
+		setsid();
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+
 	}
 	
 	if (pid_file != NULL)
 		write_pid_file();
 
-	if (daemonize == 1) {
-		setsid();
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
-	}
-
-	signal(SIGINT, sigint_handler);
-	signal(SIGTERM, sigint_handler);
-	signal(SIGHUP, sighup_handler);
-
-
+	setup_signals();
 begin:
-	/* Fill internal PRL and make sure we have at least one IP in it */
+	/* Fill internal PRL and make sure we have at least one entry */
 	while (fill_internal_prl() < 0) {
 		if (verbose >= 0)
 			syslog(LOG_INFO, "Internal PRL empty! Rechecking in %d sec.\n", WAIT_FOR_PRL);
@@ -542,6 +592,7 @@ begin:
 	while (!go_down)
 	{
 		uint32_t saddr_n;
+		int status;
 
 		child = fork();
 		if (child < 0) {
@@ -549,39 +600,43 @@ begin:
 			break;
 		}
 		if (child) {
-			/* Parent */
+			/* Parent BEGIN */
+			
+			/* Wait for child to terminate */
 			waitpid(child, &status, 0);
 			if (WIFEXITED(status))
 				status = WEXITSTATUS(status);
 			if (verbose >= 2)
 				syslog(LOG_INFO, "Solicitation Loop exited with status %d\n", status);
 			child = 0;
-			/* Parent */
+			/* Parent END*/
 		} else {
-			/* Child */
-			int status;
-			status = run_solicitation_loop(tunnel_name, dns_interval * 1000);
+			/* Child BEGIN */
+			status = run_solicitation_loop(tunnel_name, dns_interval * 1000, unpriv_username);
 			closelog();
 			exit(status);
-			/* Child */
+			/* Child END */
 		}
 		/* Parent */
 		if (go_down)
 			break;
 
 		if (status == EXIT_CHECK_PRL) {
-			/* Child requested to recheck PRL withou taking the tunnel down */
+			/* Child requested to recheck PRL, without taking the tunnel down */
 			if (verbose >= 1)
 				syslog(LOG_INFO, "Rechecking DNS entries for PRL\n");
-			if (fill_internal_prl() < 0) {
+			
+			fill_internal_prl();
+			prune_kernel_prl(tunnel_name);
+			
+			if (get_first_internal_pdr() == NULL) {
 				/* If PRL suddenly is empty, restart from the beginning */
 				delete_isatap_tunnel();
 				goto begin;
 			}
-			prune_kernel_prl(tunnel_name);
 		}
 		if (status == EXIT_ERROR_FATAL) {
-			syslog(LOG_ERR, "Child exited with ERROR_FATAL\n");
+			syslog(LOG_ERR, "Child exited with ERROR_FATAL. Going down.\n");
 			break;
 		}
 
