@@ -304,7 +304,7 @@ static uint32_t get_tunnel_saddr(const char* iface)
 		int fd = socket (AF_INET, SOCK_DGRAM, 0);
 	
 		if (fd < 0) {
-			perror("socket");
+			syslog(LOG_ERR, "socket: %s\n", strerror(errno));
 			break;
 		}
 
@@ -500,7 +500,7 @@ int main(int argc, char **argv)
 		if (pid > 0) {
 			/* Server */
 			if (verbose >= 1)
-				fprintf(stderr, PACKAGE ": running isatap daemon as pid %d\n",(int)pid);
+				syslog(LOG_INFO, "Running isatap daemon as pid %d\n", (int)pid);
 			exit(0);
 		}
 		/* Client */
@@ -545,7 +545,7 @@ begin:
 
 		child = fork();
 		if (child < 0) {
-			perror("fork:");
+			syslog(LOG_ERR, "fork: %s\n",strerror(errno));
 			break;
 		}
 		if (child) {

@@ -286,7 +286,7 @@ ssize_t recvadv(int fd, int ifindex)
                                 MSG_WAITALL, &addr);
 	if (val == -1)
 	{
-		perror ("Receiving ICMPv6 packet");
+		syslog(LOG_ERR, "Receiving ICMPv6 packet: %s\n", strerror(errno));
 		return val;
 	}
 

@@ -323,7 +323,7 @@ int run_solicitation_loop(char* tunnel_name, int check_dns_timeout) {
 
 	ifindex = if_nametoindex(tunnel_name);
 	if (ifindex < 0) {
-		perror("if_nametoindex");
+		syslog(LOG_ERR, "if_nametoindex: %s\n", strerror(errno));
 		return EXIT_ERROR_FATAL;
 	}
 
@@ -391,7 +391,7 @@ int run_solicitation_loop(char* tunnel_name, int check_dns_timeout) {
 		ret = select(fd+1, &fds, NULL, NULL, &timeout);
 		if (ret < 0) {
 			close(fd);
-			perror("select");
+			syslog(LOG_ERR, "select: %s\n", strerror(errno));
 			return EXIT_ERROR_FATAL;
 		}
 		
@@ -399,7 +399,7 @@ int run_solicitation_loop(char* tunnel_name, int check_dns_timeout) {
 			/* Data available from socket */
 			next_timeout = next_timeout - timeout.tv_sec * 1000 - timeout.tv_usec / 1000;
 			if (recvadv(fd, ifindex) < 0) {
-				perror("recvadv");
+				syslog(LOG_ERR, "recvadv: %s\n", strerror(errno));
 				return EXIT_ERROR_LAYER2;
 			}
 		}
