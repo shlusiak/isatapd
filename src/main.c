@@ -475,17 +475,11 @@ static void write_pid_file()
 	char s[32];
 	int pf;
 
-	pf = open(pid_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	pf = open(pid_file, O_WRONLY | O_CREAT, 0644);
 	if (pf < 0) {
 		syslog(LOG_ERR, "Cannot create pid file, terminating: %s\n", strerror(errno));
 		exit(1);
 	}
-	
-	snprintf(s, sizeof(s), "%d\n", (int)getpid());
-	if (write(pf, s, strlen(s)) < strlen(s))
-		syslog(LOG_ERR, "write: %s\n", strerror(errno));
-	if (fsync(pf) < 0)
-		syslog(LOG_ERR, "fsync: %s\n", strerror(errno));
 
 	fl.l_type = F_WRLCK;
 	fl.l_whence = SEEK_SET;
@@ -496,6 +490,17 @@ static void write_pid_file()
 		syslog(LOG_ERR, "Cannot lock pid file, terminating: %s\n", strerror(errno));
 		exit(1);
 	}
+
+	if (ftruncate(pf, 0) < 0) {
+		syslog(LOG_ERR, "Cannot truncate pid file, terminating: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	snprintf(s, sizeof(s), "%d\n", (int)getpid());
+	if (write(pf, s, strlen(s)) < strlen(s))
+		syslog(LOG_ERR, "write: %s\n", strerror(errno));
+	if (fsync(pf) < 0)
+		syslog(LOG_ERR, "fsync: %s\n", strerror(errno));
 }
 
 
