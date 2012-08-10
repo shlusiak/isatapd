@@ -49,7 +49,8 @@ uint32_t get_if_addr(const char *dev)
 
 int tunnel_add(const char *dev,
 		const char *link,
-		uint32_t saddr)
+		uint32_t saddr,
+		uint8_t ttl)
 {
 	struct ip_tunnel_parm p;
 	struct ifreq ifr;
@@ -62,6 +63,8 @@ int tunnel_add(const char *dev,
 	p.iph.protocol = IPPROTO_IPV6;
 	p.iph.saddr = saddr;
 	p.iph.frag_off = htons(IP_DF);
+	p.iph.ttl = ttl;
+
 	p.i_flags |= SIT_ISATAP;
 	strncpy(p.name, dev, IFNAMSIZ);
 	p.link = if_nametoindex(link);

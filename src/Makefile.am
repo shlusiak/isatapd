@@ -1,4 +1,4 @@
-AM_CFLAGS = -Wall -pedantic -Werror
+AM_CFLAGS = -Wall
 
 
 bin_PROGRAMS = isatapd

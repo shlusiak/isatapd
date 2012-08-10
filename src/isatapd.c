@@ -41,6 +41,7 @@ static int   router_num = 0;
 static int   probe_interval = 600;
 static int   verbose = 0;
 static int   daemonize = 0;
+static int   ttl = 64;
 static int   mtu = 0;
 static int volatile go_down = 0;
 
@@ -54,11 +55,13 @@ static void show_help()
 	fprintf(stderr, "       interface       tunnel link device\n");
 	fprintf(stderr, "       -n --name       name of the tunnel\n");
 	fprintf(stderr, "                       default: auto\n");
-	fprintf(stderr, "          --mtu        set MTU of tunnel\n");
+	fprintf(stderr, "          --mtu        set tunnel MTU\n");
 	fprintf(stderr, "                       default: auto\n");
+	fprintf(stderr, "          --ttl        set tunnel hoplimit\n");
+	fprintf(stderr, "                       default: %d\n", ttl);
 	fprintf(stderr, "\n");
 
-	fprintf(stderr, "       -r --router     add a potential router (up to %d).\n", sizeof(router_name)/sizeof(router_name[0]));
+	fprintf(stderr, "       -r --router     add a potential router (up to %d).\n", (int)sizeof(router_name)/(int)sizeof(router_name[0]));
 	fprintf(stderr, "                       default: '%s'.\n", router_name[0]);
 	fprintf(stderr, "       -i --interval   interval to check PRL and perform router solicitation\n");
 	fprintf(stderr, "                       default: %d seconds\n", probe_interval);
@@ -74,7 +77,6 @@ static void show_help()
 
 	fprintf(stderr, "       -h --help       display this message\n");
 	fprintf(stderr, "          --version    display version\n");
-
 
 	exit(0);
 }
@@ -105,6 +107,7 @@ static void parse_options(int argc, char** argv)
 		{"one-shot", 0, NULL, '1'},
 		{"version", 0, NULL, 'V'},
 		{"mtu", 1, NULL, 'm'},
+		{"ttl", 1, NULL, 't'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -144,7 +147,13 @@ static void parse_options(int argc, char** argv)
 			break;
 		case 'm': mtu = atoi(optarg);
 			if (mtu <= 0) {
-				fprintf(stderr, PACKAGE ": invalid cardinal -- %s\n", optarg);
+				fprintf(stderr, PACKAGE ": invalid mtu -- %s\n", optarg);
+				show_help();
+			}
+			break;
+		case 't': ttl = atoi(optarg);
+			if (ttl <= 0 || ttl > 255) {
+				fprintf(stderr, PACKAGE ": invalid ttl -- %s\n", optarg);
 				show_help();
 			}
 			break;
@@ -273,7 +282,7 @@ static uint32_t start_isatap()
 		exit(1);
 	}
 	
-	if (tunnel_add(tunnel_name, interface_name, saddr) < 0) {
+	if (tunnel_add(tunnel_name, interface_name, saddr, ttl) < 0) {
 		if (verbose >= -1)
 			perror("tunnel_add");
 		exit(1);
