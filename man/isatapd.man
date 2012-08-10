@@ -72,15 +72,21 @@ fork to background. No logging is available yet.
 .TP
 \fB\-p \-\-pid\fP \fIfile\fP
 Store the pid as plaintext to \fIfile\fP. The pid file will be write-locked to prevent multiple running instances. Useful for scripts and when running \fBisatapd\fP as a daemon.
+.TP
+\fB\-\-user\fP \fIusername\fP
+Drop privileges to this user when running the solicitation loop.
+
+Default: 
+.I nobody
 
 .TP
 \fB\-v \-\-verbose\fP
 increase verbosity
 .TP
-\fB\-\-quiet \-q\fP
+\fB\-q \-\-quiet\fP
 decrease verbosity
 .TP
-\fB\-\-help \-h\fP
+\fB\-h \-\-help\fP
 print usage
 .TP
 \fB\-\-version\fP
@@ -104,7 +110,7 @@ logs to stderr when run in foreground and to \fBsyslog\fP(3), using the facility
 .SH "NOTES"
 Network data will be processed by
 .B isatapd
-with privileges of the \'nobody\' user to minimize impact of bugs. To create and manage the tunnel device, root privileges are necessary.
+with privileges of an unprivileged user to minimize impact of bugs in the networking code. To create and maintain the tunnel device, root privileges are necessary.
 
 Whenever the tunnel link interface goes down or the source address for the local tunnel endpoint changes, the tunnel device will be destroyed and recreated, if possible. Note that till then your tunnel might be in a unusable state.
 
