@@ -2,7 +2,7 @@ isatapd
 =======
 
 This is a helper to set up an ISATAP Client tunnel in Linux. 
-You need at least linux-2.6.25 for ISATAP support.
+You need at least linux-2.6.25 for in-kernel ISATAP support.
 
 
 Source available at:
@@ -18,7 +18,7 @@ Simple usage example:
 # isatapd --daemon --pid /var/run/isatapd.pid
 
 Or more complex:
-# isatapd --verbose --name isatap0 --mtu 1200 --interval 300 --user-rs isatap-router.localdomain.tld
+# isatapd --verbose --name isatap0 --mtu 1200 --interval 300 isatap-router.localdomain.tld
 
 See isatapd(8) for details.
 
