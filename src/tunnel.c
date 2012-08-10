@@ -15,9 +15,12 @@
 #include <unistd.h>
 #include <string.h>
 
-#include <linux/if_tunnel.h>
 #include <sys/ioctl.h>
+#include <arpa/inet.h>
+#include <netinet/ip.h>
 #include <net/if.h>
+
+#include <linux/if_tunnel.h>
 
 #ifdef HAVE_CONFIG_H
 	#include <config.h>
