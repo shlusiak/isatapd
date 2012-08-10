@@ -333,7 +333,7 @@ static uint32_t get_tunnel_saddr(const char* iface)
 		
 		if (connect (fd, p->ai_addr, p->ai_addrlen) == 0) {
 			addrlen = sizeof(addr);
-			getsockname (fd, (struct sockaddr *)&addr, &addrlen);
+			getsockname(fd, (struct sockaddr *)&addr, &addrlen);
 			if (addrlen == sizeof(addr))
 				saddr = addr.sin_addr.s_addr;
 		}
