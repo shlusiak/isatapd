@@ -1,6 +1,6 @@
 .\" shorthand for double quote that works everywhere.
 .ds q \N'34'
-.TH isatapd 8 "November 15th, 2009" __version__ "ISATAP client for Linux"
+.TH isatapd 8 "August 13th, 2012" __version__ "ISATAP client for Linux"
 .SH NAME
 isatapd \- ISATAP client for Linux
 
@@ -66,6 +66,15 @@ Default: auto
 Interval to perform DNS resolution of configured routers and to recreate the PRL, if necessary. Set to 0 to disable.
 
 Default: 3600 sec = 1 hour
+.TP
+\fB\-\-sunrise\fP
+Do not bring up ISATAP interface, if an existing IPv6 default route is found. That way you can automatically disable transition mechanisms on clients when the network is going native IPv6.
+
+Note that
+.B isatapd
+will still run in the background and check for connectivity every
+.I --check-dns
+interval.
 .TP
 \fB\-d \-\-daemon\fP
 fork to background. No logging is available yet.
