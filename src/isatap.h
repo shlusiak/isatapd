@@ -47,7 +47,7 @@ struct PRLENTRY* get_first_internal_pdr();
 
 int add_router_name_to_internal_prl(const char* host, int default_timeout);
 int prune_kernel_prl(const char* dev);
-int run_solicitation_loop(char* tunnel_name, int check_prl_timeout, char* username);
+int run_solicitation_loop(char* tunnel_name, int check_prl_timeout, int sunrise, char* username);
 
 
 #endif

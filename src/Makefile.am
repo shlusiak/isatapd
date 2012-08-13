@@ -8,5 +8,5 @@ isatapd_SOURCES = \
 	main.c main.h \
 	isatap.c isatap.h \
 	tunnel.c tunnel.h \
-	rdisc.c rdisc.h
-
+	rdisc.c rdisc.h \
+	sunrise.c sunrise.h

@@ -39,6 +39,7 @@
 #include "tunnel.h"
 #include "rdisc.h"
 #include "isatap.h"
+#include "sunrise.h"
 
 
 static struct PRLENTRY* prl_head = NULL;
@@ -342,7 +343,7 @@ static void sighup_handler_child() {
  *   EXIT_ERROR_LAYER2
  *   EXIT_CHECK_PRL
  */
-int run_solicitation_loop(char* tunnel_name, int check_dns_timeout, char* username) {
+int run_solicitation_loop(char* tunnel_name, int check_dns_timeout, int sunrise, char* username) {
 	struct PRLENTRY* pr;
 	int fd;
 	int ifindex;
@@ -452,6 +453,10 @@ int run_solicitation_loop(char* tunnel_name, int check_dns_timeout, char* userna
 		while (pr) {
 			pr->next_timeout -= next_timeout;
 			if (pr->next_timeout <= 0) {
+				if (sunrise) {
+					if (sunrise_get(tunnel_name))
+						return EXIT_ERROR_LAYER2;
+				}
 				if (verbose >= 1) {
 					char addrstr[INET6_ADDRSTRLEN];
 					syslog(LOG_INFO, "Soliciting %s\n",

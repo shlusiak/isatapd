@@ -39,6 +39,7 @@
 #include "tunnel.h"
 #include "rdisc.h"
 #include "isatap.h"
+#include "sunrise.h"
 
 
 static char* tunnel_name = NULL;
@@ -64,6 +65,7 @@ static int   pmtudisc = 1;
 static int   volatile go_down = 0;
 static pid_t child = 0;
 static char* unpriv_username = DEFAULT_UNPRIV_USERNAME;
+static int   sunrise = 0;
 
 static int   syslog_facility = LOG_DAEMON;
 
@@ -95,6 +97,8 @@ static void show_help()
 	fprintf(stderr, "       -D --check-dns  interval to perform DNS resolution and\n");
 	fprintf(stderr, "                       recreate PRL.\n");
 	fprintf(stderr, "                       default: %d seconds\n", DEFAULT_PRLREFRESHINTERVAL);
+	fprintf(stderr, "          --sunrise    Refuse bringing up interface, if native IPv6 is present\n");
+	
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "       -d --daemon     fork into background\n");
@@ -159,6 +163,7 @@ static void parse_options(int argc, char** argv)
 		{"ttl", 1, NULL, 't'},
 		{"nopmtudisc", 0, NULL, 'N'},
 		{"user", 1, NULL, 'U'},
+		{"sunrise", 0, NULL, 'S'},
 		{NULL, 0, NULL, 0}
 	};
 	int long_index = 0;
@@ -251,6 +256,10 @@ static void parse_options(int argc, char** argv)
 
 		  /* --version */
 		case 'V': show_version();
+			break;
+		
+		  /* --sunrise */
+		case 'S': sunrise = 1;
 			break;
 
 		default:
@@ -577,13 +586,24 @@ int main(int argc, char **argv)
 
 	setup_signals();
 begin:
+	if (sunrise) {
+		while (sunrise_get(tunnel_name)) {
+			printf("Sunrise in progress. Sleeping %d sec.\n",
+			       DEFAULT_PRLREFRESHINTERVAL);
+			sleep(DEFAULT_PRLREFRESHINTERVAL);
+			if (go_down)
+				goto end;
+		}
+	  
+	}
 	/* Fill internal PRL and make sure we have at least one entry */
-	while (fill_internal_prl() < 0) {
+	if (fill_internal_prl() < 0) {
 		if (verbose >= 0)
 			syslog(LOG_INFO, "Internal PRL empty! Rechecking in %d sec.\n", WAIT_FOR_PRL);
 		sleep(WAIT_FOR_PRL);
 		if (go_down)
 			goto end;
+		goto begin;
 	}
 
 	/* Wait till we find an outgoing interface for the first entry in the PRL */
@@ -617,7 +637,7 @@ begin:
 			/* Parent END*/
 		} else {
 			/* Child BEGIN */
-			status = run_solicitation_loop(tunnel_name, dns_interval * 1000, unpriv_username);
+			status = run_solicitation_loop(tunnel_name, dns_interval * 1000, sunrise, unpriv_username);
 			closelog();
 			exit(status);
 			/* Child END */
