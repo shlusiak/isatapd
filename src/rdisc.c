@@ -22,6 +22,7 @@
 #include <netinet/icmp6.h>
 #include <arpa/inet.h>
 #include <syslog.h>
+#include <sys/socket.h>
 
 
 #ifdef HAVE_CONFIG_H
