@@ -220,7 +220,12 @@ int add_router_name_to_internal_prl(const char* host, int default_timeout)
 	/* Get addresses for host */
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
-	hints.ai_protocol=IPPROTO_IPV6;
+	/* strictly speaking this should be IPPROTO_IPV6 to return IPv4 addresses
+	   that are suitable for IPv6 in IPv4 tunnelling. This however fails on my
+	   android 4.2.2 device and returns an empty list. Because we only care about
+	   the IPv4 address, do our tunnel magic later, we might as well fail later
+	   and request an IPv4 address for UDP, which should work on all systems. */
+	hints.ai_protocol=IPPROTO_UDP;
 	err = getaddrinfo(host, NULL, &hints, &addr_info);
 
 	if (err) {
