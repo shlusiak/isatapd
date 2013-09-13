@@ -169,12 +169,12 @@ static void parse_options(int argc, char** argv)
 
 		switch (c) {
 		  /* --name */
-		case 'n': if (optarg)
+		case 'n': if (optarg && strcmp("auto", optarg))
 				tunnel_name = strdup(optarg);
 			break;
 			
 		  /* --link */
-		case 'l': if (optarg)
+		case 'l': if (optarg && strcmp("auto", optarg))
 				interface_name = strdup(optarg);
 			break;
 			
@@ -184,7 +184,7 @@ static void parse_options(int argc, char** argv)
 			break;
 			
 		  /* --interval */
-		case 'i': if (optarg) {
+		case 'i': if (optarg && strcmp("auto", optarg)) {
 				if ((sscanf(optarg, "%d", &rs_interval) < 1) || (rs_interval < 0)) {
 					syslog(LOG_ERR, "invalid cardinal -- %s\n", optarg);
 					show_help();
