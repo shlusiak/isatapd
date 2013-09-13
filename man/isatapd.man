@@ -1,6 +1,6 @@
 .\" shorthand for double quote that works everywhere.
 .ds q \N'34'
-.TH isatapd 8 "November 15th, 2009" __version__ "ISATAP client for Linux"
+.TH isatapd 8 "September 13th, 2013" __version__ "ISATAP client for Linux"
 .SH NAME
 isatapd \- ISATAP client for Linux
 
@@ -35,17 +35,23 @@ Tunnel link device. If specified, tunnel will be restricted to that device, allo
 .B isatapd
 with different tunnels. The tunnel can only exist as long as the link device is up and has a IPv4 address configured.
 
-If unspecified, the outgoing IPv4 address will be guessed for the first
+If unspecified or
+.I 'auto'
+, the outgoing IPv4 address will be guessed for the first
 .I router
 and the tunnel created accordingly. The tunnel device will only created, if there is a possible IPv4 source address to reach the first router.
 .TP
 \fB\-m \-\-mtu \fIbytes\fP
 Sets the MTU to 
-.I value
-for the tunnel device, minimum is 1280. If unspecified, the kernel will choose the MTU automatically, usually 1480.
+.I bytes
+for the tunnel device, minimum is 1280. If unspecified or 0, the kernel will choose the MTU, usually 1480.
 .TP
 \fB\-t \-\-ttl\fP \fIhoplimit\fP
-Set the tunnel hoplimit, default is 64. Specifying 'auto' or 'inherit' will make the tunnel inherit the ttl from the linked device.
+Set the tunnel hoplimit, default is 64. Specifying
+.I 'auto'
+or
+.I 'inherit'
+will make the tunnel inherit the ttl from the linked device.
 .TP
 \fB\-N \-\-nopmtudisc\fP
 Disable (IPv4) Path MTU Discovery on this tunnel. For this to work --ttl has to be set to inherit. Default: do Path MTU Discovery to reduce redundant fragmentation.
@@ -58,9 +64,12 @@ will resolv the hostname, add the IPv4 address to the
 and send periodic router solicitation messages. Up to 10 potential routers can be specified, the default is the unqualified domainname "isatap". 
 .TP
 \fB\-i \-\-interval\fP \fIseconds\fP
-Default interval to send router solicitations. If the router lifetime is lower, the interval will be 80\% of the router\'s lifetime. Can be used to force solicitations at a shorter interval.
+Default interval to send router solicitations. If the router lifetime is lower or interval is
+.I 'auto'
+, the interval will be 80\% of the router's lifetime. Can be used to force solicitations at a shorter interval.
 
-Default: auto
+Default: 
+.I auto
 .TP
 \fB\-D \-\-check-dns\fP \fIseconds\fP
 Interval to perform DNS resolution of configured routers and to recreate the PRL, if necessary. Set to 0 to disable.
