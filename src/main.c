@@ -211,10 +211,14 @@ static void parse_options(int argc, char** argv)
 			break;
 			
 		  /* --mtu */
-		case 'm': mtu = atoi(optarg);
-			if (mtu <= 0) {
-				syslog(LOG_ERR, "invalid mtu -- %s\n", optarg);
-				show_help();
+		case 'm': if ((strcmp(optarg, "auto") == 0) || (strcmp(optarg, "0") == 0))
+				mtu = 0;
+			else {
+				mtu = atoi(optarg);
+				if (mtu <= 0) {
+					syslog(LOG_ERR, "invalid mtu -- %s\n", optarg);
+					show_help();
+				}
 			}
 			break;
 		  /* --ttl */

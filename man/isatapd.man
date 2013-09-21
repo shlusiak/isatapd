@@ -44,7 +44,9 @@ and the tunnel created accordingly. The tunnel device will only created, if ther
 \fB\-m \-\-mtu \fIbytes\fP
 Sets the MTU to 
 .I bytes
-for the tunnel device, minimum is 1280. If unspecified or 0, the kernel will choose the MTU, usually 1480.
+for the tunnel device, minimum is 1280. If unspecified, 
+.I 'auto'
+or 0, the kernel will choose the MTU, usually 1480.
 .TP
 \fB\-t \-\-ttl\fP \fIhoplimit\fP
 Set the tunnel hoplimit, default is 64. Specifying
