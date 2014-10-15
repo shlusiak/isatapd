@@ -363,9 +363,12 @@ int run_solicitation_loop(char* tunnel_name, int check_dns_timeout, char* userna
 	srand((unsigned int)time(NULL));
 
 	ifindex = if_nametoindex(tunnel_name);
-	if (ifindex < 0) {
+	if (ifindex <= 0) {
 		syslog(LOG_ERR, "if_nametoindex: %s\n", strerror(errno));
 		return EXIT_ERROR_FATAL;
+	}
+	if (verbose >= 2) {
+		syslog(LOG_INFO, "Found interface %s at index %d\n", tunnel_name, ifindex);
 	}
 
 	/* Add internal PRL to kernel PRL */
