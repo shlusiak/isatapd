@@ -84,9 +84,6 @@ int send_rdisc(int fd, int ifindex, struct in6_addr *addr)
 	struct sockaddr_in6 target;
 	struct nd_router_solicit rs;
 
-	if (ifindex == 0)
-		return -1;
-
 	memset(&target, 0, sizeof(target));
 	memset(&rs, 0, sizeof(rs));
 	target.sin6_addr = *addr;
